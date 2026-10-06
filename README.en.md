@@ -1,403 +1,176 @@
 # dsh-anagenesis
 
-A **programmable memory-orchestration layer + self-evolution engine** for DeepSeek Harness.
+[中文](README.md) · [Changelog](CHANGELOG.md) · MIT
 
-`anagenesis` is not an automatic memory plugin. It ships its own closed-loop memory store
-(no external memory plugin is called, bridged or proxied), exposes memory to the agent as
-**intent-shaped tools**, switches its injection strategy **at runtime**, and adjusts its own
-policy parameters from observed results — with every write, switch and adjustment returning
-an inverse function.
+> **Memory your agent actually owns — and you can actually see.**
+>
+> Not another "automatic memory black box". Memory operations are tools the agent calls on purpose,
+> the injection strategy is switchable at runtime, every change comes with its inverse, self-tuning is
+> bounded, audited and revertible — and the whole store is self-contained, offline and dependency-free.
 
-```
-$ dsh plugin add dsh-anagenesis     # then restart the profile
-```
+![The anagenesis desktop window — dashboard](assets/dashboard.png)
 
-Installing registers an agent preset named **`anagenesis`**; pick it in a new session.
+## What it is, in three lines
 
-## Three layers
+- **A self-contained store**: an append-only `journal/*.jsonl` plus atomic snapshots. It never calls, bridges or proxies an external memory service — no database, no cloud, no model calls.
+- **Memory as tools the agent drives** (17 `ana_*` tools): recall is shaped by **intent** (`orient`, `recall_precedent`, `avoid_mistake`, `reuse_procedure`, …), not by background extraction.
+- **It governs its own behaviour, too**: switchable injection stacks, bounded meta-level self-tuning, a monotonic guard, and a revertible history for all of it — with a trail you can audit.
 
-| Layer | Module | What it owns |
+## How it differs from a typical "automatic memory" plugin
+
+| Dimension | Typical automatic memory | anagenesis |
 |---|---|---|
-| 1 · memory primitives | `src/memory/ops.js`, `src/memory/recall.js`, `src/store/*` | recall by intent, remember, promote/demote, lock, expire, split, counterfactual rethink, forget, link, usage feedback |
-| 2 · strategy engine | `src/strategy/builtin.js`, `registry.js`, `engine.js` | runtime-registerable pure-function strategies (`explore`, `exploit`, `debug`, `distill`, invariant `guard`), reversible switching, per-scope stacks, derivation with lineage |
-| 3 · meta-policy | `src/meta/tuner.js` | feedback signals → bounded parameter adjustment (UCB1 + envelope) → audit → evaluation → rollback |
+| Who decides what is stored | Background extraction; the agent is not involved | **The agent decides, with tools**: `ana_remember`, `ana_promote`, `ana_split`, `ana_rethink`, `ana_forget` |
+| How recall works | Keyword or vector similarity | **Intent-driven**: 7 intents expand into kinds, states, confidence floor, weights, granularity, token budget, diversity |
+| Injection strategy | Fixed | **Switchable at runtime** (6 named stacks), and **stacks are per scope** — one agent switching does not touch another |
+| What a change costs | Usually irreversible | **Every transaction returns an inverse**; inverses are journalled next to the forward patch, so **reverts survive a restart** |
+| Self-tuning | None | **The meta layer tunes itself from feedback**: parameter envelope + UCB1 + audit + evaluation + rollback |
+| Blast radius | — | **Monotonic guard + circuit breaker + `safeMode`**; only tier-1 is self-modifiable, the outer ring is frozen |
+| Dependencies | Often an external service or vector DB | **Zero runtime dependencies, offline, no subprocess, no network** |
+| Visibility | A black box | TUI dashboard + mermaid/d2/ascii diagrams + an optional desktop window |
 
-Guardrails live in `src/guard/`; the agent preset in `src/preset/`.
+## Install
 
-## Agent tools
+### Everything at once (recommended: kernel + desktop window)
 
-Fourteen `ana_*` tools, all registered through `ctx.tools.register(defineTool(...))`:
-
-`ana_recall` · `ana_remember` · `ana_promote` · `ana_demote` · `ana_lock` · `ana_expire` ·
-`ana_split` · `ana_rethink` · `ana_forget` · `ana_link` · `ana_strategy` · `ana_tune` ·
-`ana_feedback` · `ana_audit`
-
-`ana_recall` takes an **intent** (`orient`, `recall_fact`, `recall_precedent`, `avoid_mistake`,
-`reuse_procedure`, `verify`, `contrast`), not a query language: the intent expands into kinds,
-states, confidence floor, weights, granularity, token budget and diversity.
-
-## Every mutation is reversible
-
-A mutation is a **declarative JSON patch** (`src/store/patch.js`), never a closure. The store
-serializes all writers through one async mutex, appends the event to an append-only journal,
-then swaps in a frozen snapshot (lock-free readers).
-
-`invertPatch(preState, patch)` derives the exact inverse from the pre-state, so:
-
-- `transact()` returns `revert(reason)`, which commits the inverse as a *compensating event*;
-- the inverse is journaled beside the forward patch, so a rollback still works after a restart;
-- `ana_strategy action:"revert" seq:<n>` and `ana_tune action:"rollback" auditId:<id>` are
-  thin wrappers over that same primitive.
-
-Verified by `test/core.test.js`: *"revert() undoes a commit through a compensating journal
-event"*, including reverting a revert.
-
-## The self-bootstrapping answer
-
-**Yes, anagenesis bootstraps itself — with a fixed outer loop.**
-
-- **Self-applied (tier 1):** memory, strategy stacks and tunable parameters. The agent recalls
-  its own past failures, derives new strategies from built-ins, and tunes its own confidence
-  floors, token budgets and half-lives from feedback it collected itself. This is real
-  self-modification: the store's own behaviour changes as a result.
-- **Frozen (tier 2):** the parameter envelope, the tunable namespace whitelist, the presence of
-  the invariant `guard` strategy, the tool schemas, the destruction budget, and the plugin code
-  itself. Nothing in the running agent can rewrite these; changing them requires a human edit.
-
-Reason: an agent that can rewrite its own fitness function and its own brakes will drift toward
-whatever scores well rather than what works, and there is no recoverable state to roll back to.
-Tier-1 self-application gives genuine adaptation; the frozen outer loop keeps the adaptation
-auditable and bounded. The boundary is executable, not aspirational — see `INVARIANTS` in
-`src/guard/invariants.js` and the `safeMode` freeze.
-
-## Concurrency model
-
-- one `Mutex` serializes every mutation; readers never lock (they read a frozen snapshot);
-- durability first: journal append → snapshot swap → listener dispatch;
-- snapshots are atomic (temp file + rename) and are only a cache — the journal wins on boot;
-- `MemoryStore.acquire()` reference-counts per root directory, so the profile row and the
-  preset-scoped row share **one** writer instead of racing on the same journal file.
-
-## Storage
-
-Self-contained under `$DSH_HOME/anagenesis/` (configurable):
-
-```
-anagenesis/
-  journal/journal-000001.jsonl     append-only event log: { seq, ts, type, patch, undo, touched }
-  journal/archive-<seq>.jsonl      folded events: forward patch dropped, `undo` kept
-  journal/checkpoint-<seq>.json    the frozen state at that boundary
-  journal/pruned.json              only when the retention policy has ever dropped something
-  snapshot.json                    atomic boot cache: { savedAt, schemaVersion, state }
+```bash
+dsh plugin add dsh-anagenesis          # kernel: memory + strategies + guard + visualization tools
+dsh plugin add dsh-anagenesis-window   # desktop window (optional, but recommended)
 ```
 
-Compaction runs once the live log passes `compactAfterEvents` (default 2000). Each run **appends
-one archive segment** covering the live events it folded — older segments are never rewritten, so
-a compaction costs O(live), not O(history) — then writes a fresh checkpoint and starts a new live
-segment. Only the newest checkpoint is kept: an older snapshot is dead weight, because the events
-it freezes stay in the archives.
+Then **restart your profile**. Installing registers an agent preset called **`anagenesis`** — pick it in a new session.
 
-Two bounds stop the layout from growing without limit, and neither is on by accident:
+> Kernel only? The first command is enough. The window is genuinely optional: the preset knows the
+> capability exists but never assumes it is installed.
 
-- `archiveMaxSegments` (default 16) merges the oldest segments once there are too many.
-  **Merging drops nothing** — the merged segment still carries every event it covered, `undo`
-  included, so `revert(seq)` still executes the oldest rollback.
-- `retainEvents` (**default 0 = keep everything**) is the one lossy policy: whole archive segments
-  outside the most recent N events are deleted at compaction time. Those seqs stop being
-  revertible, which is why it is off by default — and why the loss is made visible instead of
-  silent: `ana_audit view=status` reports the marker under `journal.pruned`, `revert` names the
-  policy rather than claiming the seq never existed, and the drop is recorded as a
-  `journal.prune` audit row.
+### From source (if you want to hack on it or track `main`)
 
-Retrieval is a BM25 inverted index plus a deterministic hashing vectorizer
-(`src/memory/embed.js`, 192-d, L2-normalized) with MMR-lite diversity packing. No native
-dependency, no model download, no network; `embed` is injectable in the core row.
+```bash
+git clone https://github.com/3likofj/dsh-anagenesis.git
+cd dsh-anagenesis
+dsh plugin --profile desktop add link:<absolute path to this repo>
+dsh plugin --profile desktop add link:<absolute path to this repo>/window   # optional
+```
 
-Schema migrations are a pure chain (`migrateState`), so a v1 document from an older build loads
-forward; the lenient strategy-parameter read tolerates keys left over from a previous version.
-The current version is **v6**, which moved the tuner's learning state into `state.tuning`
-(samples, UCB1 arms, tune history) — see *Learning state* below.
+## Five minutes in
 
-### What lives in state, and what that buys
+1. Install, restart the profile, and select the **`anagenesis`** preset in a new session (default stack `guard + exploit`).
+2. Just work: the agent calls `ana_recall` and `ana_remember` itself — there is no query language to write.
+3. To look at the store, ask the agent for `ana_dashboard` (one TUI frame, right in the answer) or `ana_diagram` (a diagram you can paste into Markdown).
+4. For a live view in a real terminal: `node tools/viz-watch.mjs --watch` (read-only, separate process).
+5. For the desktop window: install the second package, restart, then call `ana_window` or click an entrance.
 
-Two things used to be process-local and are now state, because that is what made them
-reproducible:
+## Capability map (17 tools)
 
-- **the tuner's learning state** (`state.tuning`, v6): the feedback sample window, the arm pulls
-  and the applied-tune history. `ana_feedback` and `ana_tune apply` carry it inside the same
-  transaction as the audit row that explains it, so a restart resumes from the journal instead of
-  zeroing the meta layer, and `revert(seq)` rolls the learning state back with everything else.
-  The tuner keeps **no private copy** — it reads `state.tuning`, so a revert is visible to it
-  immediately rather than on the next boot.
-- **the lifetime counters** (`state.stats`): each is incremented by the operation that owns it,
-  inside the transaction it counts, so a counter can never disagree with the journal.
-  `commits` = every transaction, `reverts` = every compensating transaction,
-  `recalls` = every `service.recall()` call (selected or not), `writes` = every accepted
-  `ops.remember()` commit (lifecycle transitions such as promote/lock are recorded by `commits`,
-  not by `writes`). Counters added later start counting from the version that introduced them —
-  they are not backfilled from history.
-
-### The host boundary
-
-Every tool answer is round-tripped through JSON by the host, which rejects the whole call with
-`value is not lossless JSON` when anything is lost. Two consequences are enforced in code and
-tested on both layers (`test/lossless.mjs` + the 14-tool sweep in `verify:boot`):
-
-- a key whose value is `undefined` is **lossy** — it exists in the returned object and disappears
-  in the JSON (`{...record, embedding: undefined}` is not "drop the field"; destructure instead);
-- `auditAppend` has no inverse by design: an audit row records that something *happened*, so
-  `revert` refuses an event whose only effect was an audit append instead of reporting a phantom
-  rollback. Domain changes keep exact inverses.
-
-## Guardrails
-
-- `ctx.tools.guard()` — a **monotonic** pre-execute guard (registered after the extensible
-  waterfall; no guard can force-allow what another denied). It denies locked forgets without
-  `force`, missing reasons, over-budget batches, and meta changes while `safeMode` is on.
-- pre-commit invariants on the transaction path — a refused change leaves **no** journal trace.
-- strategy circuit breaker: 3 hook failures in 5 minutes quarantines that strategy; the engine
-  degrades to the rest of the stack, and the guard freezes meta changes until it is revived.
-- `safeMode` config flag freezes strategy registration, switching and tuning entirely.
-
-## Configuration (bundle rows, `cordis.patch.yml`)
-
-| Row | Entry | Purpose |
+| Group | Tools | What they do |
 |---|---|---|
-| `anagenesis-core` | `dsh-anagenesis` | service (`ctx.anagenesis`): store, registry, engine, tuner, ops |
-| `anagenesis-tools` | `dsh-anagenesis/tools` | the fourteen `ana_*` memory tools |
-| `anagenesis-guard` | `dsh-anagenesis/guard` | monotonic tool guard + quarantine brake |
-| `anagenesis-preset` | `dsh-anagenesis/preset` | registers the `anagenesis` agent preset |
-| `anagenesis-viz` | `dsh-anagenesis/viz` | read-only visualization: `ana_dashboard` + `ana_diagram` |
+| Recall & feedback | `ana_recall` · `ana_feedback` | Retrieve by intent; tell the system whether what it injected was actually useful |
+| Writing & lifecycle | `ana_remember` · `ana_promote` · `ana_demote` · `ana_lock` · `ana_expire` · `ana_forget` | `draft → active → verified → locked`, plus demote / expire / delete (deletion leaves an auditable tombstone) |
+| Structure | `ana_link` · `ana_split` · `ana_rethink` | Link beliefs; split an overloaded memory into narrower ones; **counterfactual rethink** (what follows if the premise is false) |
+| Governance | `ana_strategy` · `ana_tune` · `ana_audit` | Switch or derive strategies; meta-level tuning and rollback; inspect state, journal, audit trail and health |
+| Visualization | `ana_dashboard` · `ana_diagram` · `ana_window` | Dashboard, text diagrams, desktop window (each of the last two belongs to its own row — no row, no tool) |
 
-Core config keys: `rootDir`, `safeMode`, `persistDebounceMs`, `recallDefaultTokenBudget`,
-`hookBudgetMs`, `sweepIntervalMs`, `autoSweepExpired`.
-Visualization config keys: `color`, `width`, `redaction`, `events`, `salience`, `diagramNodes`,
-`includeBodies`, `auditRenders` — all optional, all with safe defaults.
+## Injection strategy: which brain for which moment
 
-## Visualization
-
-Visualization is the one part of anagenesis that is allowed to be absent, and it is built so that
-absence costs nothing:
-
-```
-              ┌──────────────┐        ┌───────────────────┐        ┌──────────────────┐
-  state ─────▶│ viz/model.js │───────▶│ viz/tui.js        │───────▶│ ana_dashboard    │
-  journal      │  (projections)│       │  (ANSI frame)     │        │ one frame, chat  │
-  ──────────▶  │              │       ├───────────────────┤        ├──────────────────┤
-               │              │──────▶│ viz/diagram.js    │───────▶│ ana_diagram      │
-               └──────────────┘        │ mermaid/d2/ascii  │        │ paste-ready      │
-                                       └───────────────────┘        └──────────────────┘
-                    ▲                                                     ▲
-                    └──── viz/mirror.js (files, read-only) ──────────────┘
-                              tools/viz-watch.mjs — live TUI, own process
-```
-
-Two forms, one model:
-
-- **TUI dashboard** — `ana_dashboard` renders one frame (box-drawn, display-width exact including
-  CJK labels, ANSI only when asked) into the tool answer; `node tools/viz-watch.mjs --watch` is
-  the live, continuously redrawing version in a real terminal. Sections: overview, lifecycle,
-  kinds, strategy, tuning knobs that drifted off their defaults, journal tail, top-salience
-  beliefs, and the renderer's own health.
-- **Text as diagram** — `ana_diagram` emits Mermaid (default), D2 or ASCII for three kinds:
-  `memory-graph` (beliefs and their `supports`/`contradicts`/`supersedes` links),
-  `strategy-timeline` (stack/tune/revert governance events) and `lifecycle` (the transitions the
-  journal actually recorded — `lock`/`expire`/`sweep` record only a destination, and the picture
-  says so instead of inventing a source edge).
-
-Properties that are enforced, not promised:
-
-- **read-only**: a render is not a transaction (`verify:boot` asserts the store version does not
-  move across a render). The only write is `auditRenders: true`, off by default, which appends a
-  `viz.render` row and reports its seq.
-- **reversible / independently disableable**: a fifth Loader row — `disabled: true` on
-  `anagenesis-viz` removes both tools and nothing else. The row provides no service (the preset
-  mounts it a second time; `ctx.provide` would collide — HANDOFF §10.16) and starts no timers.
-- **no subprocess, no GUI**: the plugin never spawns anything, and the live watcher is a
-  standalone read-only process the operator runs themselves.
-- **redaction boundary**: `secrets` by default — credential-shaped substrings scrubbed, bodies
-  omitted; `strict` masks labels as well; `none` is an explicit local-debug escape hatch that the
-  frame itself warns about.
-- **versioned artifacts**: every diagram carries
-  `<!-- anagenesis-viz v1 kind=… format=… store=… at=… origin=… redaction=… -->`. `normalizeArtifact`
-  accepts the header-less v0 shape and refuses to choke on a newer version (it shows the raw body
-  and says it is newer).
-- **observable itself**: the viz section of the dashboard reports renders/diagrams/errors/last
-  render, and one line is logged when the row registers.
-
-## Preset ↔ tool binding
-
-Two different mechanisms, deliberately:
-
-1. **Which tools exist** is *compositional*: the preset's `plugins` list mounts exactly the tool
-   rows the preset gets (`src/preset/definition.js`). There is no runtime mask.
-2. **Behaving like an anagenesis agent** is *runtime and reversible*: the
-   `anagenesis-preset-bind` row activates the default strategy stack
-   (`['guard','exploit']`) and adopts the recall token budget for its scope. Unloading the preset
-   restores the previous stack from the journal.
-3. On an agent-scoped host, `toolAllow` narrows the mask via `ctx.tools.restrict()`; in a plain
-   preset scope that call throws and is downgraded to a warning, so one definition works on both
-   host shapes.
-
-The `anagenesis` preset is registered through the `agentPresets` service
-(`register(def) → unregister`), so `ctx.effect(() => registry.register(def))` gives the preset
-exactly the plugin fiber's lifetime. If the service publishes *after* this row applies — which it
-does on this host — the row binds reactively with `ctx.inject(['agentPresets'], …)` and registers
-the moment it appears.
-
-The directory form (`$DSH_HOME/.agent-presets/<id>/{preset.yml,agent.cordis.yml}`) is a fallback
-for hosts old enough to scan a directory roster. It is **off** in this deployment's
-`cordis.patch.yml`, because `@deepseek-ai/dsh-agent-preset-registry` 0.2.0-rc.2 contains no
-reference to `.agent-presets`, `preset.yml` or `readdir` at all — it sources presets from the
-Loader tree plus `register()`. Set `autoInstallDirectoryForm: true` only for an older line; the
-writer never overwrites an existing local composition.
-
-## DSH API assumptions (verified, not guessed)
-
-Read out of the running harness `app.asar/dsh/node_modules/@deepseek-ai/*` (DSH
-`0.2.0-rc.2`, Cordis 4.x) before writing this code:
-
-| API | Contract used | Where |
+| Named stack | Composition | Best for |
 |---|---|---|
-| `ctx.effect(fn)` | runs `fn`, collects its returned disposer, disposes in reverse on fiber unload | `src/index.js`, `src/guard/index.js`, `src/preset/bind.js` |
-| `ctx.provide(name, value)` | returns a disposer; Cordis unregisters the service when the fiber unloads | `src/index.js` |
-| `ctx.inject(deps, apply)` | starts a child plugin once dependencies exist | declared as `export const inject` |
-| `internal/service` event | dependency changes refresh dependents | engine/registry cache invalidation |
-| `ctx.tools.register(def)` | returns the exact disposer; duplicates in one layer throw | `src/tools/index.js` |
-| `defineTool({...})` | compiles the parameter spec, validates **args** only | `src/tools/index.js` |
-| `ctx.tools.guard(fn)` | monotonic; a returned string denies the call | `src/guard/index.js` |
-| `ctx.tools.restrict({allow,deny})` | scoped context only | `src/preset/bind.js` |
-| `agentPresets.register(def)` | `{id,name,description,order,plugins}` → unregister disposer | `src/preset/index.js` |
-| `ctx.plugin(cb)` / `apply` result | **collected as an effect**: function = disposer, null/undefined = OK, promise = awaited then collected, **any other object = `TypeError: Invalid effect`** | all five rows |
+| `explore` | guard + explore | Still mapping the problem: high recall, low bar, writes land as drafts |
+| `exploit` | guard + exploit | Executing a known plan: inject only verified/locked beliefs, writes take effect immediately |
+| `debug` | guard + debug | The moment things break: failures and open hypotheses first, time decay off |
+| `distill` | guard + distill | Long sessions where tokens matter: compression first |
+| `recon` | guard + explore + distill | Open up, then tighten |
+| `crisis` | guard + debug + exploit | Repeated failure: failures and verified facts injected together |
 
-`inject` is an array of service names for `anagenesis-tools` (`['tools','anagenesis']`) and
-`anagenesis-guard`; `anagenesis-preset` deliberately declares **no** hard dependency on
-`agentPresets` (it is optional on older lines) and probes `typeof registry.register === 'function'`
-instead of "does the service exist".
+`guard` is an **invariant**: always at the bottom, injecting nothing itself — it only weights locked
+beliefs up, drafts down, and keeps `retired` records out. Strategies are **pure function bundles with
+bounded parameters**: an agent may only derive a strategy by naming a built-in implementation plus a
+parameter delta. An agent that can persist arbitrary code is an agent that can brick its own harness.
 
-### The row contract (learned the hard way)
+## Every change can be undone
 
-Cordis collects whatever `apply` returns as an **effect**:
+- A change is a **declarative JSON patch**, never a closure. The store serializes all writers: append to the journal first, then swap in a frozen snapshot (readers never lock).
+- `transact()` returns `revert(reason)`, which commits the inverse as a *compensating event* **in the same journal** — so reverts still work after a restart.
+- `ana_strategy action:"revert"` and `ana_tune action:"rollback"` are thin wrappers over that one primitive.
+- The journal has three bounds: segments are merged when there are too many (**merging drops no seq**), only the newest checkpoint is kept, and the single **lossy** retention policy is off by default — and when it ever drops something, the status view says so instead of pretending the seq never existed.
 
-```js
-const effect = runner.execute.call(this)                   // runs apply(ctx, config)
-if (typeof effect === 'function') runner.collect(effect)   // a disposer      — OK
-else if (isNullable(effect)) { /* OK */ }                  // undefined/null  — OK
-else if (!isObject(effect)) throw new TypeError('Invalid effect')
-else if ('then' in effect) return effect.then(safeCollect) // await, then collect the value
-// safeCollect(value): non-function, non-null  →  throw new TypeError('Invalid effect')
+## The boundary on self-direction (why it does not drift)
+
+**It can direct itself — behind a frozen outer ring.**
+
+- **tier 1 (self-modifiable)**: memories, strategy stacks, tunable parameters. The agent can recall its own past failures, derive strategies, and adjust its confidence floor and token budget from feedback it collected.
+- **tier 2 (frozen)**: the parameter envelope, the tunable-namespace allow-list, the existence of `guard`, tool schemas, and the plugin code itself. A running agent cannot touch any of it.
+
+The reason is blunt: an agent that can rewrite its own fitness function and its own brakes drifts
+towards "scores well" instead of "actually works", with no recoverable state to roll back to. The
+boundary is **enforced** (8 monotonic invariants plus the `safeMode` freeze), not a slogan.
+
+## What you can see
+
+![Memory graph (horizontal)](assets/graph-lr.png)
+
+![Lifecycle transitions](assets/lifecycle.png)
+
+![Strategy timeline](assets/timeline.png)
+
+- **TUI dashboard** (`ana_dashboard`): overview, lifecycle distribution, kind distribution, strategy stacks and health, tuning knobs that deviate from their defaults, journal tail, salience ranking, and the renderer's own health. Width-exact, including CJK labels; colour only when asked for.
+- **Text diagrams** (`ana_diagram`): Mermaid (default) / D2 / ASCII, three kinds — the belief graph (with `supports` / `contradicts` / `supersedes` edges), the strategy timeline, and observed lifecycle transitions (only what the journal really recorded; `lock` / `expire` style destination-only events are labelled as such instead of inventing a source edge).
+- **Desktop window** (optional sibling package): Chinese cards and a hand-rolled inline-SVG directed graph (LR/TB plus zoom) produced by the same pure functions, with three entrance seats (better-sidebar row / official right sidebar / conversation header), reading the store as a read-only mirror.
+- Rendering is a **read-only projection**: a render is not a transaction. The only optional write, `auditRenders`, is off by default; `tools/viz-watch.mjs` is an independent read-only process that can redraw continuously in a real terminal.
+
+## Where the data lives, and privacy
+
+```
+$DSH_HOME/anagenesis/
+  journal/journal-000001.jsonl     append-only event log (seq / type / patch / undo)
+  journal/archive-<seq>.jsonl      folded archives (the `undo` is kept)
+  journal/checkpoint-<seq>.json    frozen state at a boundary
+  snapshot.json                    atomic startup cache
 ```
 
-An `async apply` that returns a status object (`{ mode }`, `{ dispose }`) is therefore rejected,
-and the resulting fibre teardown **rolls back every effect the body already created**. The first
-live install failed exactly this way: `provide('anagenesis')` and all fourteen `tools.register`
-calls were undone, so the dependent rows waited forever and no `ana_*` tool ever appeared. Rules:
+- **Entirely local**: no network, no model download, no model calls, no subprocesses.
+- **Zero runtime dependencies**: retrieval is a built-in BM25 inverted index plus a deterministic hashing embedder (192 dimensions). A real semantic backend can be injected at runtime.
+- **Redaction on by default**: tool and window output defaults to `secrets` — credential-shaped text is scrubbed and bodies are omitted. `strict` masks labels too; `none` is an explicit local-debug escape hatch, and the artifact warns about it.
+- **Legacy directory compatibility**: the default is `$DSH_HOME/anagenesis`; if the pre-rename `$DSH_HOME/evolution` holds more data, the plugin keeps using it and says so in the log, moving not a single byte. To move it, run `npm run migrate:store` (copy + per-file sha256 verification; the source is untouched).
 
-1. `apply` returns **nothing**, or a disposer function. Never a plain object.
-2. If `ctx.effect` already owns a disposer, do **not** also return it — Cordis would collect it
-   twice, and a doubly-disposed revert undoes its own undo.
-3. Register the effect *before* a long `await` when an unload during the await must still be undone.
+## Configuration (all optional, all with safe defaults)
 
-`test/adapter.test.js` asserts rule 1 for every row, and the bind test asserts rule 2 as
-"exactly one revert".
+Key knobs on the kernel row:
 
+| Key | Default | Effect |
+|---|---|---|
+| `rootDir` | `$DSH_HOME/anagenesis` | Store root; set explicitly and it is obeyed exactly (no legacy fallback) |
+| `safeMode` | `false` | Freezes strategy registration, switching and tuning |
+| `recallDefaultTokenBudget` | `1600` | Default token budget for injected recall |
+| `hookBudgetMs` | `8` | Time budget for a single strategy hook (a timeout counts as a failure, never stalls recall) |
+| `compactAfterEvents` | `2000` | Compact the journal past this many live events; `0` disables |
+| `archiveMaxSegments` | `16` | Upper bound on archive segments (oldest are merged, no seq lost); `0` = unbounded |
+| `retainEvents` | `0` | The single lossy policy: keep only archives newer than N events; `0` = keep everything |
+| `embedProvider` | `hash` | Vector backend to open with; a semantic backend can be installed at runtime |
+| `reflectionEnabled` | `true` | Periodic reflection: question established beliefs whose evidence has visibly decayed (filed as draft hypotheses only) |
 
-## Tests
+Also: `exposeAuditTool` / `exposeTuneTool` on the tools row; `lang` / `redaction` / `width` /
+`auditRenders` and friends on the visualization row; see `window/README.md` for the window package.
 
+## FAQ
+
+**Does it slow recall down?** Strategy hooks have an 8 ms budget and a timeout counts as a failure; reads use a frozen snapshot and never lock.
+
+**Will the store grow into a mess?** Lifecycle states, confidence, salience decay, expiry sweeps and counterfactual rethink are all explicit tools you can call to tidy up.
+
+**Does uninstalling leave anything behind?** Each row releases the effects it created (tools, services, timers, routes, seats); once unloaded the journal handle is closed and the store directory can be deleted normally.
+
+**Can I use a real semantic retriever?** Yes. Install a backend at runtime with `service.useEmbedder(...)`, then `reembed()` to recompute stored vectors. Until then the status view keeps reporting that stored vectors are stale.
+
+**Why is the desktop window a separate package?** A package that declares `dsh.client` may own exactly **one** active Loader row, and the kernel is five rows (the preset mounts them again). That is a DSH constraint, so the window is a single-row sibling.
+
+## Development
+
+```bash
+npm test && npm run check && npm run verify:boot   # 69 unit tests + syntax + 87 boot-sandbox checks
+npm run preflight && npm run gate:pack             # publish metadata + real pack/install (resolves exports installed)
+cd window && npm run gate                          # window: build + 83 tests + live HTTP probe
 ```
-npm test        # 47 tests, four suites, stubbed host
-npm run check   # node --check over every adapter row and the reflection module
-npm run verify:boot
-```
 
-`npm test` runs against a stubbed host because the real host packages live in the profile, not
-this repository:
+## License
 
-- `test/core.test.js` — patch algebra, the migration chain (v1 → v6), journal replay after a
-  restart, **journal compaction** (archive + checkpoint: every seq stays traceable, the oldest
-  event stays revertible, a snapshot-less replay still rebuilds the state, an older segment comes
-  out **byte-identical** after the next compaction, the segment-count guard merges without losing
-  a seq, and the opt-in retention prune leaves a marker and refuses the lost reverts), reference
-  counting, revert-of-revert, **a stack transaction that
-  created a scope** (reversible now; a forward deletion of a live stack is still refused),
-  the lifecycle ops (remember/promote/demote/lock/expire/split/rethink/forget/usage/sweep),
-  intent planning, budget packing, strategy switching/derivation/quarantine, the tuner loop
-  (including that the learning state survives a restart and a revert takes it back out),
-  **per-scope salience**, **pluggable vector backends and re-embedding**, invariants and the
-  tool guard, and the two reversibility boundaries (audit-only events are refused, not faked).
-- `test/adapter.test.js` — the five rows against a host stub: the `apply` effect contract for
-  every row, service publication surviving its own apply, 14 tool registrations, a full agent
-  round-trip (remember → recall → promote → split → strategy switch → revert → rethink →
-  feedback → audit → tune gate → guard denial), caller budget honouring, preset-bind settling and
-  single-owner disposal, reactive preset registration, the compaction-policy mapping, and a
-  **lossless-JSON check on every tool answer** (`test/lossless.mjs`) plus the counters and the
-  deduplicated-write contract.
-- `test/preset.test.js` — definition as single source of truth, platform-gated shell rows,
-  directory-form rendering, persona contract, idempotent directory install.
-- `test/viz.test.js` — the visualization layer: a render is a pure projection (the state object
-  and the store version are unchanged), the frame is display-width exact at three widths and
-  survives CJK labels and ANSI colour, credentials are scrubbed by default and `strict` masks
-  labels, the memory graph marks links whose target is outside the window, lifecycle counts come
-  from the journal (and unrecorded sources are not invented), artifacts migrate from v0 and
-  degrade on a newer version, and the read-only mirror agrees with `MemoryStore` on the same
-  directory while leaving it byte-identical.
-- `test/reflect.test.js` — the scheduled sweep: which beliefs qualify as stale, that one run is
-  bounded, that a belief already carrying a live challenge is never asked twice, that every
-  reflection is an ordinary `memory.rethink` transaction, and that reverting one reopens the
-  question.
-
-Bugs these tests found and fixed: a `null` parameter write pinned a knob to its envelope
-minimum instead of restoring the default; a pending snapshot write fired after teardown;
-`toDirectoryForm` returned an array where `fs.writeFile` expected text; an `async apply`
-returning an object, which Cordis rejects with `TypeError: Invalid effect` (see §DSH API
-assumptions) and which tore down the row after its body had run; `preset-bind` firing its stack
-switch without awaiting it; `preset-bind` dropping the compensating transaction for the token
-budget it wrote, so every preset unload leaked the parameter; `createToolGuard` reading
-`exec.args` where the host passes `exec.arguments`, which made every argument-dependent
-guardrail silently inert; **ASI joining `row.access ??= {…}` with a following `(record)` into a
-call of the object literal**, which broke the v2→v5 migration for any document that actually had
-records; and the v2→v3 migration dropping `meta.params` because `normalizeState` always
-pre-fills `params`, so the `??` fallback could never fire.
-
-`npm run verify:boot` is the same boot contract, packaged: it extracts the harness libraries
-(`@deepseek-ai/cordis`, `dsh-tools`, `schemastery` and their closure — 17 packages, 736 files)
-out of the installed `app.asar` into a **temp directory outside this package**, registers a
-resolution hook there, imports the real `src/**`, and drives five rows through mount → observe →
-unload: 55 checks covering the effect contract, service publication, all fourteen tools compiled
-by the real `defineTool`, preset-bind settling, reactive preset registration, unload
-reversibility, and three concurrency-safe proofs that the user's real store was never touched.
-It never writes into this package's `node_modules` — a package-local copy of a host library
-would shadow the host's own instance and split `Service`/`defineTool` identities.
-
-## MVP roadmap
-
-- **MVP-1 (done, installed, live-verified):** store + patch algebra + journal, fourteen tools,
-  three built-in strategies + guard, tuner with audit/rollback, invariants, `anagenesis` preset,
-  and the packaged boot contract.
-- **MVP-2 (done):** per-agent strategy scopes verified end to end on the live host (the
-  recalling scope really does use its own stack, down to the rendered section); journal
-  compaction with `archive-*.jsonl` + `checkpoint-*.json`, transparent to `ana_audit
-  view=journal` and to `revert(seq)`; `npm run verify:boot`.
-- **MVP-3 (done):** a pluggable vector backend (`registerEmbedProvider` / `resolveEmbedder` /
-  `service.useEmbedder`) with a stamped `state.embed` and a one-transaction `reembed()`;
-  per-scope salience so a shared store cannot let one agent re-rank another's recall; and a
-  scheduled reflection job that files counterfactuals against beliefs whose evidence aged out.
-- **MVP-4 (done):** a bounded journal layout — one appended archive segment per compaction
-  (`archiveMaxSegments` merges the oldest without dropping a seq), plus an **opt-in** retention
-  window (`retainEvents`, default 0) that prunes whole segments and records the loss in
-  `pruned.json`, in `status().journal.pruned`, and as a `journal.prune` audit row.
-- **MVP-5 (done):** visualization without a GUI — a dependency-free projection layer
-  (`src/viz/`), two read-only tools (`ana_dashboard`, `ana_diagram`) on their own kill-switch
-  row, a standalone live TUI (`tools/viz-watch.mjs`) that reads the store without becoming a
-  writer, redaction by default, and versioned text artifacts. A future GUI consumes
-  `viz/model.js`; it does not replace it.
-- **Not shipped — a GUI settings panel.** One was written and then withdrawn: a package that
-  declares `dsh.client` may own exactly **one** active Loader row, because
-  `@deepseek-ai/dsh-client-modules` resolves a client source per row and throws on
-  `package X resolves from multiple active Loader sources … remove one entry`. This package
-  deliberately ships **four** independently disableable rows (and the `anagenesis` preset mounts
-  them again), so a client half cannot live here. The panel would have to ship as its own
-  single-row package; `npm run verify:boot` now fails the build if `dsh.client` reappears beside
-  more than one row.
-- **Still open:** native `tsc` type-checking (there is no `jsconfig`/`typescript` in this
-  dependency-free package).
+MIT

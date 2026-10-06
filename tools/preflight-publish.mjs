@@ -50,6 +50,20 @@ for (const [zh, en] of [['README.md', 'README.en.md'], ['window/README.md', 'win
 }
 check('CHANGELOG.md 存在', existsSync(join(root, 'CHANGELOG.md')), '市场会展示版本说明；对不上版本时只能给提交记录')
 
+// ── README 里引用的本地图片必须真的存在 ────────────────────────────────────
+// 坏图是"最像没写完"的发布事故，而且静态检查就能抓到：只校验相对路径，外链交给网络。
+const imageProblems = []
+for (const file of ['README.md', 'README.en.md', 'window/README.md', 'window/README.en.md']) {
+  if (!existsSync(join(root, file))) continue
+  const text = readFileSync(join(root, file), 'utf8')
+  for (const match of text.matchAll(/!\[[^\]]*\]\(([^)\s]+)/g)) {
+    const target = match[1]
+    if (/^https?:\/\//i.test(target)) continue
+    if (!existsSync(join(root, dirname(file), target))) imageProblems.push(`${file} → ${target}`)
+  }
+}
+check('README 里的本地图片引用都存在', imageProblems.length === 0, imageProblems.join(' · ') || '全部命中')
+
 // ── 安装说明不能只有作者本机可用的路径 ────────────────────────────────────
 const localPath = /link:D:\/cj\/anagenesis/i
 const installDocs = ['README.md', 'README.en.md']

@@ -5,7 +5,7 @@
 
 ## [0.1.0] — 2026-10-07
 
-首个公开版本。此前经历 MVP-1 … MVP-7 七个阶段的内部迭代，本版本把它们整理成可发布形态。
+首个公开版本。
 
 ### 新增
 
@@ -23,9 +23,8 @@
 
 ### 变更
 
-- **包名与工具前缀更名**（此前的内部版本叫 `dsh-evolution`）：
-  `dsh-anagenesis` / `dsh-anagenesis-window`，工具前缀 `ana_*`，cordis 服务 `ctx.anagenesis`，
-  Loader 行 id `anagenesis-*`，预设 id `anagenesis`。
+- **包名与工具前缀**：`dsh-anagenesis` / `dsh-anagenesis-window`，工具前缀 `ana_*`，
+  cordis 服务 `ctx.anagenesis`，Loader 行 id `anagenesis-*`，预设 id `anagenesis`。
 - **存储目录**：默认 `$DSH_HOME/anagenesis`。检测到改名前的 `$DSH_HOME/evolution` **数据更完整**时会
   继续使用它并给出提示，**不自动搬迁**；搬迁请显式运行 `npm run migrate:store`（复制 + 逐文件校验）。
 - **界面全面中文化**：Agent 预设系统提示词、全部工具描述与参数说明、窗口界面与图表、
