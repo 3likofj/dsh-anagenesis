@@ -74,7 +74,7 @@
   },
   "scripts": {
     "test": "node --import ./test/host-loader.mjs --test test/*.test.js",
-    "check": "node --check src/index.js && node --check src/paths.js && node --check src/tools/index.js && node --check src/preset/index.js && node --check src/guard/index.js && node --check src/meta/reflect.js && node --check src/viz/index.js && node --check src/viz/model.js && node --check src/viz/tui.js && node --check src/viz/diagram.js && node --check tools/viz-watch.mjs && node --check tools/asar-scan.mjs && node --check tools/migrate-store.mjs && node --check tools/preflight-publish.mjs && node --check tools/pack-gate.mjs",
+    "check": "node --check src/index.js && node --check src/paths.js && node --check src/tools/index.js && node --check src/preset/index.js && node --check src/guard/index.js && node --check src/meta/reflect.js && node --check src/viz/index.js && node --check src/viz/model.js && node --check src/viz/lang.js && node --check src/viz/tui.js && node --check src/viz/diagram.js && node --check tools/viz-watch.mjs && node --check tools/asar-scan.mjs && node --check tools/migrate-store.mjs && node --check tools/preflight-publish.mjs && node --check tools/pack-gate.mjs",
     "verify:boot": "node tools/verify-boot.mjs",
     "test:window": "node --import ./test/host-loader.mjs --test window/test/*.test.mjs",
     "gate:window": "cd window && npm run gate",

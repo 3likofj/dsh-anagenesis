@@ -129,7 +129,7 @@ test('preset: it is AWARE of the visualization window and does not mount it', ()
 })
 
 test('preset: the directory install is idempotent and leaves local edits alone', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'evo-preset-'))
+  const home = await mkdtemp(join(tmpdir(), 'ana-preset-'))
   const previousHome = process.env.DSH_HOME
   process.env.DSH_HOME = home
   try {

@@ -30,7 +30,7 @@ const quiet = { info() {}, warn() {}, debug() {} }
 
 /** @param {(store: MemoryStore, dir: string) => Promise<void>} fn */
 async function withStore(fn) {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-viz-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-viz-'))
   const store = await MemoryStore.open({ rootDir: dir, logger: quiet })
   try {
     return await fn(store, dir)
@@ -140,6 +140,55 @@ test('viz: the frame is width-exact, including CJK labels', async () => {
     const cjkLine = frameLineWith(wide, '记忆库只允许一个写者')
     assert.ok(cjkLine !== null, 'the CJK subject is rendered')
     assert.equal(displayWidth(cjkLine), 120, 'a line carrying CJK is still exactly the frame width')
+  })
+})
+
+test('viz: the model is English by default and the terminal frame can be Chinese', async () => {
+  await withStore(async (store) => {
+    await seed(store)
+    const source = { state: store.state, events: store.recentEvents({ limit: 20 }), journal: store.journalStats() }
+    // The window's Chinese layer keys on these English labels (`zhLabel(item.label)`,
+    // `item.label === 'safe mode'`), so the DEFAULT must not move. This test is the
+    // gate that stops a well-meaning "just translate the model" change from
+    // silently breaking the desktop window.
+    const en = buildDashboardModel(source, { redaction: 'secrets', width: 96 })
+    assert.equal(en.render.lang, 'en', 'the default model language is en')
+    const enLabels = en.sections.flatMap((section) => section.rows.map((row) => row.label))
+    assert.ok(enLabels.includes('store') && enLabels.includes('memories') && enLabels.includes('safe mode'),
+      `the default model keeps the English labels the window keys on (got ${enLabels.slice(0, 6).join(', ')})`)
+
+    // zh: labels, section titles, values and the frame's own chrome are Chinese.
+    // `redaction: 'none'` is what makes the warning deterministic instead of
+    // depending on how many events the seed happened to write.
+    const zh = buildDashboardModel(source, { redaction: 'none', width: 96, lang: 'zh' })
+    assert.equal(zh.render.lang, 'zh')
+    assert.equal(zh.title, 'anagenesis 仪表盘')
+    const zhLabels = zh.sections.flatMap((section) => section.rows.map((row) => row.label))
+    assert.ok(zhLabels.includes('存储') && zhLabels.includes('记忆') && zhLabels.includes('安全模式'),
+      `the zh model localizes the frame labels (got ${zhLabels.slice(0, 6).join(', ')})`)
+    assert.ok(zh.warnings.some((warning) => warning.includes('凭据')), 'the zh model localizes its warnings')
+    const frame = renderFrame(zh, { width: 96, color: 'never' })
+    const lines = frame.split('\n')
+    const bottom = lines.findLastIndex((line) => line.startsWith('╰'))
+    assert.ok(bottom > 0, 'the zh frame has a bottom border')
+    for (const line of lines.slice(0, bottom + 1)) {
+      assert.equal(displayWidth(line), 96, `a Chinese frame line is not exactly 96 cells: ${JSON.stringify(line.slice(0, 40))}`)
+    }
+    assert.ok(frame.includes('├─ 总览 '), 'the section title is Chinese')
+    assert.ok(frame.includes('├─ 告警 '), 'the frame-owned warnings header is Chinese')
+    assert.equal(frame.includes(' safe mode '), false, 'no English label leaks into the zh frame')
+    assert.equal(frame.includes('├─ warnings '), false, 'no English chrome leaks into the zh frame')
+
+    // The diagram artifact follows the same switch, while the mermaid/d2 source
+    // comments stay English on purpose (they are code for a renderer).
+    const empty = { state: { memories: {}, version: 0 }, events: [] }
+    assert.ok(renderDiagram(buildDiagramModel(empty, { kind: 'memory-graph', lang: 'zh' }), { format: 'ascii', embed: false }).text.includes('（没有可见的记忆）'))
+    assert.ok(renderDiagram(buildDiagramModel(empty, { kind: 'memory-graph' }), { format: 'ascii', embed: false }).text.includes('(no memories visible)'))
+
+    // An unknown language falls back to en — never a blank label, never a throw.
+    const bogus = buildDashboardModel(source, { redaction: 'secrets', lang: 'klingon' })
+    assert.equal(bogus.render.lang, 'en', 'an unknown language degrades to en')
+    assert.equal(JSON.stringify(bogus).includes('undefined'), false, 'the model is still JSON-safe')
   })
 })
 
@@ -301,7 +350,7 @@ test('viz: artifacts are versioned — old ones migrate, newer ones degrade inst
 })
 
 test('viz: the mirror agrees with the store it mirrors, and never writes a byte', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-mirror-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-mirror-'))
   try {
     const store = await MemoryStore.open({ rootDir: dir, logger: quiet })
     await seed(store)
@@ -341,7 +390,7 @@ test('viz: the mirror agrees with the store it mirrors, and never writes a byte'
 })
 
 test('viz: the mirror replays a compacted store (checkpoint + archive) correctly', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-mirror-compact-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-mirror-compact-'))
   try {
     const store = await MemoryStore.open({ rootDir: dir, logger: quiet })
     const ops = createMemoryOps({ store })

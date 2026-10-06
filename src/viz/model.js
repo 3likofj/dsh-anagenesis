@@ -13,6 +13,13 @@
  * window the store already holds in memory, and (when the caller has them) the
  * live engine/tuner reports. The standalone watcher passes the same shape built
  * from files, so one renderer serves both.
+ *
+ * **Language.** Labels come from `./lang.js` and default to `en`, which is the
+ * historical output **word for word** — the window's Chinese layer keys on those
+ * English labels (`window/src/render/10-i18n.js`), so the default must not move.
+ * Terminal-facing callers (`ana_dashboard`, `ana_diagram`, `tools/viz-watch.mjs`)
+ * pass `lang: 'zh'` and get a Chinese frame. The chosen language travels on
+ * `model.render.lang` so a serializer never has to guess.
  * @module dsh-anagenesis/viz/model
  */
 
@@ -20,6 +27,7 @@ import { KINDS, STATES, LIVE_STATES, effectiveSalience } from '../store/schema.j
 import { PARAM_ENVELOPE } from '../meta/tuner.js'
 import { inScope } from '../memory/recall.js'
 import { DEFAULT_REDACTION, redactRecord, redactionNote } from './redact.js'
+import { terminalText } from './lang.js'
 
 export const DASHBOARD_SECTIONS = Object.freeze([
   'overview', 'lifecycle', 'kinds', 'strategy', 'tuning', 'journal', 'salience', 'viz',
@@ -58,7 +66,7 @@ const DEFAULT_LIMITS = Object.freeze({ events: 8, salience: 5, timeline: 12, nod
 
 /**
  * @param {VizSource} source
- * @param {any} [opts]
+ * @param {any} [opts] `lang: 'en' | 'zh'` (default `en`, see the module note)
  * @returns {any} a JSON-safe dashboard model
  */
 export function buildDashboardModel(source, opts = {}) {
@@ -66,9 +74,10 @@ export function buildDashboardModel(source, opts = {}) {
   const limits = mergeLimits(opts.limit)
   const redaction = opts.redaction ?? DEFAULT_REDACTION
   const now = typeof opts.now === 'number' ? opts.now : Date.now()
-  const warnings = collectWarnings(source, opts, limits)
+  const t = terminalText(opts.lang)
+  const warnings = collectWarnings(source, opts, limits, t)
   const wanted = Array.isArray(opts.sections) && opts.sections.length > 0 ? opts.sections : DASHBOARD_SECTIONS
-  const context = { state, source, opts, limits, redaction, now, warnings, selfStatus: opts.selfStatus ?? source.selfStatus ?? {} }
+  const context = { state, source, opts, limits, redaction, now, warnings, t, selfStatus: opts.selfStatus ?? source.selfStatus ?? {} }
 
   const builders = {
     overview: overviewSection,
@@ -84,7 +93,7 @@ export function buildDashboardModel(source, opts = {}) {
   for (const id of wanted) {
     const build = builders[id]
     if (build === undefined) {
-      warnings.push(`unknown section "${id}" ignored`)
+      warnings.push(t.warning.unknownSection(id))
       continue
     }
     sections.push(build(context))
@@ -92,7 +101,7 @@ export function buildDashboardModel(source, opts = {}) {
 
   return {
     kind: 'dashboard',
-    title: 'anagenesis dashboard',
+    title: t.title,
     generatedAt: now,
     origin: source.origin ?? 'live',
     store: storeFacts(state),
@@ -100,13 +109,13 @@ export function buildDashboardModel(source, opts = {}) {
     warnings,
     limits: { events: limits.events, salience: limits.salience, nodes: limits.nodes },
     redaction: { level: redaction, note: redactionNote(redaction, opts) },
-    render: { width: Number(opts.width ?? 96), color: String(opts.color ?? 'never') },
+    render: { width: Number(opts.width ?? 96), color: String(opts.color ?? 'never'), lang: t.lang },
   }
 }
 
 /**
  * @param {VizSource} source
- * @param {any} [opts]
+ * @param {any} [opts] `lang: 'en' | 'zh'` (default `en`, see the module note)
  * @returns {any} a JSON-safe diagram model
  */
 export function buildDiagramModel(source, opts = {}) {
@@ -115,7 +124,8 @@ export function buildDiagramModel(source, opts = {}) {
   const limits = mergeLimits(opts.limit)
   const redaction = opts.redaction ?? DEFAULT_REDACTION
   const now = typeof opts.now === 'number' ? opts.now : Date.now()
-  const warnings = collectWarnings(source, opts, limits)
+  const t = terminalText(opts.lang)
+  const warnings = collectWarnings(source, opts, limits, t)
 
   const base = {
     kind,
@@ -131,10 +141,11 @@ export function buildDiagramModel(source, opts = {}) {
     warnings,
     limits: { nodes: limits.nodes, timeline: limits.timeline },
     redaction: { level: redaction, note: redactionNote(redaction, opts) },
+    render: { lang: t.lang },
   }
 
   if (kind === 'memory-graph') {
-    const graph = memoryGraph(state, opts, limits, redaction)
+    const graph = memoryGraph(state, opts, limits, redaction, t)
     base.nodes = graph.nodes
     base.edges = graph.edges
     base.warnings.push(...graph.warnings)
@@ -278,19 +289,20 @@ export function humanAge(at, now = Date.now()) {
  * @param {VizSource} source
  * @param {any} opts
  * @param {any} limits
+ * @param {typeof import('./lang.js').terminalText extends (lang: any) => infer R ? R : never} t
  * @returns {string[]}
  */
-function collectWarnings(source, opts, limits) {
+function collectWarnings(source, opts, limits, t) {
   const warnings = []
   if ((source.origin ?? 'live') === 'mirror') {
-    warnings.push('read-only mirror: engine health, tuner metric and journal counters come from state/files, not a live service')
+    warnings.push(t.warning.mirror)
   }
   if ((opts.redaction ?? DEFAULT_REDACTION) === 'none') {
-    warnings.push('redaction=none: this artifact may contain credentials — do not paste it outside your own terminal')
+    warnings.push(t.warning.redactionNone)
   }
   const eventCount = (source.events ?? []).length
   if (eventCount > limits.events && eventCount > 0) {
-    warnings.push(`journal window shows ${limits.events} of ${eventCount} in-memory events`)
+    warnings.push(t.warning.journalWindow(limits.events, eventCount))
   }
   return warnings
 }
@@ -299,91 +311,93 @@ function collectWarnings(source, opts, limits) {
 
 /** @param {any} ctx @returns {any} */
 function overviewSection(ctx) {
-  const { state, source } = ctx
+  const { state, source, t } = ctx
   /** @type {any[]} */
   const rows = [
-    { label: 'store', value: `v${state.version ?? 0} · schema v${state.schemaVersion ?? 0}` },
-    { label: 'memories', value: `${Object.keys(state.memories ?? {}).length} (${totalLive(state)} live)`, tone: 'accent' },
-    { label: 'safe mode', value: state.safeMode === true ? 'ON (meta frozen)' : 'off', tone: state.safeMode === true ? 'warn' : 'ok' },
-    { label: 'origin', value: `${ctx.source.origin ?? 'live'}${(ctx.source.origin ?? 'live') === 'mirror' ? ' (read-only)' : ''}` },
+    { label: t.label.store, value: t.value.storeVersion(state.version ?? 0, state.schemaVersion ?? 0) },
+    { label: t.label.memories, value: t.value.memoryCount(Object.keys(state.memories ?? {}).length, totalLive(state)), tone: 'accent' },
+    { label: t.label.safeMode, value: state.safeMode === true ? t.value.safeOn : t.value.safeOff, tone: state.safeMode === true ? 'warn' : 'ok' },
+    { label: t.label.origin, value: t.value.origin(source.origin ?? 'live') },
   ]
   const journal = stateJournal(ctx)
-  rows.splice(3, 0, { label: 'journal', value: `live ${journal.live} · archives ${journal.archives} · checkpoints ${journal.checkpoints}` })
+  rows.splice(3, 0, { label: t.label.journal, value: t.value.journalCounters(journal) })
   if (journal.prunedThroughSeq > 0) {
-    rows.push({ label: 'pruned', value: `every seq ≤ #${journal.prunedThroughSeq} was dropped by the retention policy`, tone: 'warn' })
+    rows.push({ label: t.label.pruned, value: t.value.pruned(journal.prunedThroughSeq), tone: 'warn' })
   }
-  return { id: 'overview', title: 'overview', rows }
+  return { id: 'overview', title: t.section.overview, rows }
 }
 
 /** @param {any} ctx @returns {any} */
 function lifecycleSection(ctx) {
+  const { t } = ctx
   const records = visibleRecords(ctx.state, ctx.opts)
   const counts = countBy(records, (record) => record.state)
   const total = records.length
   const rows = STATES.map((state) => {
     const count = counts[state] ?? 0
     return {
-      label: state,
-      value: `${count}${total > 0 ? ` (${Math.round((count / total) * 100)}%)` : ''}`,
+      label: t.state(state),
+      value: total > 0 ? t.value.ratio(count, Math.round((count / total) * 100)) : String(count),
       bar: total > 0 ? count / total : 0,
       tone: count === 0 ? 'dim' : LIVE_STATES.includes(state) ? 'accent' : 'warn',
     }
   })
-  return { id: 'lifecycle', title: `lifecycle · ${total} record(s)`, rows }
+  return { id: 'lifecycle', title: t.section.lifecycle(total), rows }
 }
 
 /** @param {any} ctx @returns {any} */
 function kindsSection(ctx) {
+  const { t } = ctx
   const records = visibleRecords(ctx.state, ctx.opts)
   const counts = countBy(records, (record) => record.kind)
   const max = Math.max(1, ...Object.values(counts))
   const rows = KINDS.map((kind) => {
     const count = counts[kind] ?? 0
-    return { label: kind, value: String(count), bar: count / max, tone: count === 0 ? 'dim' : 'plain' }
+    return { label: t.kind(kind), value: String(count), bar: count / max, tone: count === 0 ? 'dim' : 'plain' }
   })
-  return { id: 'kinds', title: 'kinds', rows }
+  return { id: 'kinds', title: t.section.kinds, rows }
 }
 
 /** @param {any} ctx @returns {any} */
 function strategySection(ctx) {
-  const { state, source } = ctx
+  const { state, source, t } = ctx
   /** @type {any[]} */
   const rows = []
   for (const scope of Object.keys(state.stacks ?? {}).sort(scopeOrder)) {
     rows.push({
-      label: scope === 'global' ? 'global' : shorten(scope, 28),
-      value: (state.stacks[scope] ?? []).join(' → ') || '(empty)',
+      label: scope === 'global' ? t.label.global : shorten(scope, 28),
+      value: (state.stacks[scope] ?? []).join(' → ') || t.value.empty,
       tone: scope === 'global' ? 'accent' : 'plain',
     })
   }
   if (Array.isArray(source.engine?.active)) {
-    rows.push({ label: 'active', value: source.engine.active.join(' → ') || '(none)', tone: 'ok' })
+    rows.push({ label: t.label.active, value: source.engine.active.join(' → ') || t.value.none, tone: 'ok' })
     const quarantined = (source.engine.health ?? []).filter((row) => row?.quarantined)
     rows.push({
-      label: 'health',
-      value: quarantined.length === 0 ? 'ok — no strategy quarantined' : `quarantined: ${quarantined.map((row) => row.strategy).join(', ')}`,
+      label: t.label.health,
+      value: quarantined.length === 0 ? t.value.healthOk : t.value.healthQuarantined(quarantined.map((row) => row.strategy).join(', ')),
       tone: quarantined.length === 0 ? 'ok' : 'bad',
     })
   } else {
-    rows.push({ label: 'health', value: 'not available in a read-only mirror', tone: 'dim' })
+    rows.push({ label: t.label.health, value: t.value.healthMirror, tone: 'dim' })
   }
   if (Object.keys(state.strategies ?? {}).length > 0) {
-    rows.push({ label: 'registered', value: Object.keys(state.strategies).join(', ') })
+    rows.push({ label: t.label.registered, value: Object.keys(state.strategies).join(', ') })
   }
-  return { id: 'strategy', title: 'strategy', rows }
+  return { id: 'strategy', title: t.section.strategy, rows }
 }
 
 /** @param {any} ctx @returns {any} */
 function tuningSection(ctx) {
-  const { state, source } = ctx
+  const { state, source, t } = ctx
   const tuning = source.tuning ?? state.tuning ?? { metric: 0, samples: 0, applied: 0 }
   const samples = Array.isArray(tuning.samples) ? tuning.samples.length : Number(tuning.samples ?? 0)
   const applied = Array.isArray(tuning.history) ? tuning.history.length : Number(tuning.applied ?? 0)
   /** @type {any[]} */
   const rows = [
-    { label: 'metric', value: Number(tuning.metric ?? 0).toFixed(3) },
-    { label: 'samples', value: String(samples) },
-    { label: 'applied', value: String(applied) },
+    { label: t.label.metric, value: Number(tuning.metric ?? 0).toFixed(3) },
+    { label: t.label.samples, value: String(samples) },
+    { label: t.label.applied, value: String(applied) },
   ]
   for (const [key, value] of Object.entries(state.params?.global ?? {})) {
     const spec = /** @type {any} */ (PARAM_ENVELOPE)[key]
@@ -394,31 +408,33 @@ function tuningSection(ctx) {
       tone: isDefault === false ? 'accent' : 'dim',
     })
   }
-  if (rows.length === 3) rows.push({ label: '(knobs)', value: 'all at their envelope defaults', tone: 'dim' })
-  return { id: 'tuning', title: 'tuning', rows }
+  if (rows.length === 3) rows.push({ label: t.label.knobs, value: t.value.envelopeDefaults, tone: 'dim' })
+  return { id: 'tuning', title: t.section.tuning, rows }
 }
 
 /** @param {any} ctx @returns {any} */
 function journalSection(ctx) {
+  const { t } = ctx
   const journal = stateJournal(ctx)
   /** @type {any[]} */
   const rows = [
-    { label: 'segments', value: `live ${journal.live} · archives ${journal.archives} · checkpoints ${journal.checkpoints}` },
+    { label: t.label.segments, value: t.value.journalCounters(journal) },
   ]
-  if (journal.prunedThroughSeq > 0) rows.push({ label: 'pruned through', value: `#${journal.prunedThroughSeq}`, tone: 'warn' })
+  if (journal.prunedThroughSeq > 0) rows.push({ label: t.label.prunedThrough, value: `#${journal.prunedThroughSeq}`, tone: 'warn' })
   const events = (ctx.source.events ?? []).slice(0, ctx.limits.events)
   for (const event of events) {
     rows.push({
       label: `#${event.seq ?? '?'}`,
-      value: `${shorten(event.type ?? 'unknown', 30)} · ${humanAge(Number(event.ts), ctx.now)} ago`,
+      value: `${shorten(event.type ?? 'unknown', 30)} · ${t.value.age(humanAge(Number(event.ts), ctx.now))}`,
       tone: 'dim',
     })
   }
-  return { id: 'journal', title: `journal · last ${events.length}`, rows }
+  return { id: 'journal', title: t.section.journal(events.length), rows }
 }
 
 /** @param {any} ctx @returns {any} */
 function salienceSection(ctx) {
+  const { t } = ctx
   const records = visibleRecords(ctx.state, ctx.opts)
   const scopeKey = typeof ctx.opts.salienceScope === 'string' ? ctx.opts.salienceScope : 'global'
   const ranked = records
@@ -429,31 +445,32 @@ function salienceSection(ctx) {
     const view = redactRecord(record, { level: ctx.redaction, includeBody: ctx.opts.includeBody === true, bodyChars: ctx.opts.bodyChars })
     return {
       label: shorten(view.label, 46),
-      value: `${salience.toFixed(2)} ${record.kind}/${record.state}`,
+      value: t.value.salience(salience.toFixed(2), t.kind(record.kind), t.state(record.state)),
       tone: record.state === 'locked' ? 'accent' : 'plain',
       // Empty string, never `undefined`: a model is JSON too, and the host
       // rejects an answer that does not survive a round trip (HANDOFF §10.18).
       note: view.bodyPreview === '' ? '' : shorten(view.bodyPreview, 60),
     }
   })
-  if (rows.length === 0) rows.push({ label: '(no memories yet)', value: 'nothing to rank', tone: 'dim' })
-  return { id: 'salience', title: `salience · top ${rows.length} (scope ${scopeKey})`, rows }
+  if (rows.length === 0) rows.push({ label: t.label.noMemories, value: t.value.nothingToRank, tone: 'dim' })
+  return { id: 'salience', title: t.section.salience(rows.length, scopeKey), rows }
 }
 
 /** @param {any} ctx @returns {any} */
 function vizSection(ctx) {
+  const { t } = ctx
   const self = ctx.selfStatus ?? {}
   /** @type {any[]} */
   const rows = [
-    { label: 'mode', value: String(self.mode ?? 'tool') },
-    { label: 'renders', value: String(Number(self.renders ?? 0)) },
-    { label: 'diagrams', value: String(Number(self.diagrams ?? 0)) },
-    { label: 'last render', value: self.lastAt === null || self.lastAt === undefined ? 'never' : `${humanAge(Number(self.lastAt), ctx.now)} ago`, tone: 'dim' },
-    { label: 'errors', value: String(Number(self.errors ?? 0)), tone: Number(self.errors ?? 0) > 0 ? 'bad' : 'ok' },
-    { label: 'redaction', value: ctx.redaction, tone: ctx.redaction === 'none' ? 'warn' : 'ok' },
-    { label: 'live TUI', value: String(self.mode ?? 'tool') === 'watch' ? 'Ctrl+C stops it · this process never writes to the store' : 'node tools/viz-watch.mjs --watch (separate read-only process)', tone: 'dim' },
+    { label: t.label.mode, value: String(self.mode ?? 'tool') },
+    { label: t.label.renders, value: String(Number(self.renders ?? 0)) },
+    { label: t.label.diagrams, value: String(Number(self.diagrams ?? 0)) },
+    { label: t.label.lastRender, value: self.lastAt === null || self.lastAt === undefined ? t.value.never : t.value.age(humanAge(Number(self.lastAt), ctx.now)), tone: 'dim' },
+    { label: t.label.errors, value: String(Number(self.errors ?? 0)), tone: Number(self.errors ?? 0) > 0 ? 'bad' : 'ok' },
+    { label: t.label.redaction, value: ctx.redaction, tone: ctx.redaction === 'none' ? 'warn' : 'ok' },
+    { label: t.label.liveTui, value: String(self.mode ?? 'tool') === 'watch' ? t.value.liveTuiWatch : t.value.liveTuiTool, tone: 'dim' },
   ]
-  return { id: 'viz', title: 'viz', rows }
+  return { id: 'viz', title: t.section.viz, rows }
 }
 
 /** @param {any} ctx @returns {any} */
@@ -478,9 +495,10 @@ function stateJournal(ctx) {
  * @param {any} opts
  * @param {any} limits
  * @param {string} redaction
+ * @param {any} t the language table from `./lang.js`
  * @returns {{ nodes: any[], edges: any[], warnings: string[] }}
  */
-function memoryGraph(state, opts, limits, redaction) {
+function memoryGraph(state, opts, limits, redaction, t) {
   const warnings = []
   const records = visibleRecords(state, opts)
   const wanted = Array.isArray(opts.ids) && opts.ids.length > 0 ? new Set(opts.ids.map(String)) : null
@@ -489,7 +507,7 @@ function memoryGraph(state, opts, limits, redaction) {
     .sort((a, b) => b.salience - a.salience)
   const chosen = (wanted === null ? ranked : ranked.filter(({ record }) => wanted.has(String(record.id)))).slice(0, Math.max(1, limits.nodes))
   if (chosen.length < (wanted === null ? ranked.length : (opts.ids ?? []).length)) {
-    warnings.push(`graph capped at ${limits.nodes} node(s)`)
+    warnings.push(t.warning.graphCapped(limits.nodes))
   }
   const ids = new Set(chosen.map(({ record }) => String(record.id)))
   const nodes = chosen.map(({ record, salience }) => {

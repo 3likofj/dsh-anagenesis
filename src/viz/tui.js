@@ -10,8 +10,14 @@
  *     a box drawn with `str.length` tears itself apart on the first CJK label.
  *   - **colour after padding.** SGR escapes count as characters, so a coloured
  *     string is padded and truncated while still bare, then wrapped.
+ *
+ * The few strings this file owns itself (`warnings`, the empty-section mark, the
+ * section fallback) come from `./lang.js`, keyed off `model.render.lang` so the
+ * caller only ever states the language once. `opts.lang` overrides it.
  * @module dsh-anagenesis/viz/tui
  */
+
+import { terminalText } from './lang.js'
 
 const RESET = '\x1b[0m'
 
@@ -144,13 +150,14 @@ function sectionLine(width, title) {
 /**
  * Render one frame.
  * @param {any} model a dashboard model from `buildDashboardModel`
- * @param {{ width?: number, color?: string, isTty?: boolean, sections?: string[] }} [opts]
+ * @param {{ width?: number, color?: string, isTty?: boolean, sections?: string[], lang?: string }} [opts]
  * @returns {string}
  */
 export function renderFrame(model, opts = {}) {
   const rawWidth = Number(opts.width ?? model?.render?.width ?? 96)
   const width = Math.min(200, Math.max(48, Number.isFinite(rawWidth) ? Math.round(rawWidth) : 96))
   const color = resolveColor(opts.color ?? model?.render?.color ?? 'never', opts.isTty === true)
+  const t = terminalText(opts.lang ?? model?.render?.lang)
   /** @param {string} tone @param {string} text */
   const paint = (tone, text) => (color === 'always' && TONES[tone] !== undefined && TONES[tone] !== '' ? `${TONES[tone]}${text}${RESET}` : text)
   const inner = width - 2 // inside the outer borders: '│' + content + '│'
@@ -170,7 +177,7 @@ export function renderFrame(model, opts = {}) {
   const lines = []
   const store = model?.store ?? {}
   const stamp = new Date(Number(model?.generatedAt ?? Date.now())).toISOString().slice(11, 19)
-  const headTitle = `${model?.title ?? 'anagenesis dashboard'}`
+  const headTitle = `${model?.title ?? t.title}`
   const headRight = `v${store.version ?? 0} · ${model?.origin ?? 'live'} · ${stamp}Z`
   // '╭─'(2) + ' '(1) + title + ' '(1) + fill + ' '(1) + right + ' '(1) + '─╮'(2)
   const headFill = Math.max(1, width - 8 - displayWidth(headTitle) - displayWidth(headRight))
@@ -197,15 +204,15 @@ export function renderFrame(model, opts = {}) {
   }
 
   for (const section of sections) {
-    lines.push(paint('accent', sectionLine(width, String(section?.title ?? section?.id ?? 'section'))))
+    lines.push(paint('accent', sectionLine(width, String(section?.title ?? section?.id ?? t.frame.sectionFallback))))
     const rows = section?.rows ?? []
-    if (rows.length === 0) lines.push(`│ ${padTo(paint('dim', '(empty)'), check)} │`)
+    if (rows.length === 0) lines.push(`│ ${padTo(paint('dim', t.frame.emptySection), check)} │`)
     for (const row of rows) pushRow(row)
   }
 
   const warnings = model?.warnings ?? []
   if (warnings.length > 0) {
-    lines.push(paint('warn', sectionLine(width, 'warnings')))
+    lines.push(paint('warn', sectionLine(width, t.frame.warnings)))
     for (const warning of warnings) {
       lines.push(`│ ${paint('warn', padTo(truncateTo(warning, check), check))} │`)
     }

@@ -4,7 +4,7 @@
  * 事故背景：工具条与内容都是 `dangerouslySetInnerHTML` 注入的 HTML，React 没有这些
  * 节点的 fiber；而 React 的 `onChange` 是**合成事件**，只对它自己注册过的表单元素
  * 合成。于是挂在窗口根节点上的 `onChange` 永远不会触发 —— 用户报的
- * 「图种 / 方向 / 宽度点不动」正是这三个 `data-evo-field` 控件。
+ * 「图种 / 方向 / 宽度点不动」正是这三个 `data-ana-field` 控件。
  *
  * 原先的测试全都直接调用 `button.props.onClick()`（也就是绕过真实事件系统），
  * 所以 72 个测试没有一个能看见它。现在改成对一个**假节点**派发原生事件，
@@ -77,28 +77,28 @@ function targetFor(spec) {
   }
 }
 
-test('events: a native change on a data-evo-field control reaches the engine', () => {
-  // 这就是用户点不动的那个控件：注入出来的 `<select data-evo-field="direction">`。
+test('events: a native change on a data-ana-field control reaches the engine', () => {
+  // 这就是用户点不动的那个控件：注入出来的 `<select data-ana-field="direction">`。
   const node = fakeNode()
   const engine = fakeEngine()
   const dispose = R.wireWindowEvents(node, engine)
 
-  node.dispatch('change', { target: targetFor({ attrs: { 'data-evo-field': 'direction' }, value: 'TB' }) })
+  node.dispatch('change', { target: targetFor({ attrs: { 'data-ana-field': 'direction' }, value: 'TB' }) })
   assert.deepEqual(engine.calls, [['setField', 'direction', 'TB']], 'the select must reach setField through a NATIVE change')
 
-  node.dispatch('change', { target: targetFor({ attrs: { 'data-evo-field': 'kind' }, value: 'lifecycle' }) })
-  node.dispatch('change', { target: targetFor({ attrs: { 'data-evo-field': 'width' }, value: '120' }) })
+  node.dispatch('change', { target: targetFor({ attrs: { 'data-ana-field': 'kind' }, value: 'lifecycle' }) })
+  node.dispatch('change', { target: targetFor({ attrs: { 'data-ana-field': 'width' }, value: '120' }) })
   assert.deepEqual(engine.calls.slice(1), [['setField', 'kind', 'lifecycle'], ['setField', 'width', '120']])
   dispose()
 })
 
-test('events: a click on a data-evo-action button reaches the engine', () => {
+test('events: a click on a data-ana-action button reaches the engine', () => {
   const node = fakeNode()
   const engine = fakeEngine()
   const dispose = R.wireWindowEvents(node, engine)
 
   node.dispatch('click', {
-    target: targetFor({ attrs: { 'data-evo-action': 'view-graph' }, closest: ['[data-evo-action]'] }),
+    target: targetFor({ attrs: { 'data-ana-action': 'view-graph' }, closest: ['[data-ana-action]'] }),
     preventDefault() {},
   })
   assert.deepEqual(engine.calls, [['dispatch', 'view-graph']])
@@ -112,7 +112,7 @@ test('events: clicks and changes outside a control are ignored', () => {
 
   node.dispatch('click', { target: targetFor({}), preventDefault() {} })
   node.dispatch('change', { target: targetFor({}) })
-  node.dispatch('change', { target: targetFor({ attrs: { 'data-evo-field': '' }, value: 'x' }) })
+  node.dispatch('change', { target: targetFor({ attrs: { 'data-ana-field': '' }, value: 'x' }) })
   assert.deepEqual(engine.calls, [], 'the listener must not invent an action')
   dispose()
 })
@@ -126,11 +126,11 @@ test('events: dragging starts only on the drag bar, never on a control', () => {
     endDrag: () => started.push('end'),
   })
 
-  const bar = targetFor({ closest: ['.evo-bar.evo-drag'] })
+  const bar = targetFor({ closest: ['.ana-bar.ana-drag'] })
   node.dispatch('pointerdown', { button: 0, target: bar, clientX: 40 })
   assert.deepEqual(started, [40], 'the title bar starts a drag')
 
-  // 工具栏里的按钮同样在 `.evo-bar` 里，但不是 `.evo-drag`，而且是一个控件。
+  // 工具栏里的按钮同样在 `.ana-bar` 里，但不是 `.ana-drag`，而且是一个控件。
   const button = targetFor({ closest: ['button,select,input'] })
   node.dispatch('pointerdown', { button: 0, target: button, clientX: 41 })
   assert.deepEqual(started, [40], 'a button inside a bar must not start a drag')
@@ -153,7 +153,7 @@ test('events: the disposer removes every listener it added', () => {
 
   dispose()
   assert.equal(node.count(), 0, 'unmounting must leave no listener behind')
-  node.dispatch('change', { target: targetFor({ attrs: { 'data-evo-field': 'width' }, value: '9' }) })
+  node.dispatch('change', { target: targetFor({ attrs: { 'data-ana-field': 'width' }, value: '9' }) })
   assert.deepEqual(engine.calls, [], 'and nothing may fire afterwards')
 })
 

@@ -38,6 +38,8 @@ export const Config = Schema.object({
     .description('文本着色策略；默认 never —— 工具回答里的文本帧不是 TTY，不该带颜色码。'),
   width: Schema.number().default(96)
     .description('文本帧宽度（终端格数；中文按显示宽度计算）。'),
+  lang: Schema.string().default('zh')
+    .description('终端文本帧与文本图表的语言：zh（默认）| en。窗口界面有自己的中文层，不受它影响。'),
   redaction: Schema.string().default(DEFAULT_REDACTION)
     .description(`产出文本的脱敏策略：${REDACTION_LEVELS.join(' | ')}。默认只擦洗凭据并省略正文。`),
   events: Schema.number().default(8)
@@ -65,12 +67,13 @@ function num(value, fallback) {
  * to `undefined` here once produced an empty diagram that looked like an empty
  * store.
  * @param {any} config
- * @returns {{ color: string, width: number, events: number, salience: number, diagramNodes: number, timeline: number }}
+ * @returns {{ color: string, width: number, lang: string, events: number, salience: number, diagramNodes: number, timeline: number }}
  */
 function resolved(config) {
   return {
     color: String(config.color ?? 'never'),
     width: num(config.width, 96),
+    lang: String(config.lang ?? 'zh') === 'en' ? 'en' : 'zh',
     events: num(config.events, 8),
     salience: num(config.salience, 5),
     diagramNodes: num(config.diagramNodes, 40),
@@ -198,6 +201,7 @@ export function apply(ctx, config = {}) {
           sections: args.sections,
           width: num(args.width, limits.width),
           color: limits.color,
+          lang: limits.lang,
           limit: { events: num(args.events, limits.events), salience: num(args.salience, limits.salience) },
           scope: args.scope ?? null,
           salienceScope: agentScope(exec),
@@ -268,6 +272,7 @@ export function apply(ctx, config = {}) {
           },
           scope: args.scope ?? null,
           redaction: REDACTION_LEVELS.includes(String(args.redaction)) ? String(args.redaction) : redaction,
+          lang: limits.lang,
         })
         const rendered = renderDiagram(model, { format: args.format, embed: args.embed !== false })
         return {

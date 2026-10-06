@@ -23,7 +23,7 @@ const DAY = 24 * 3600 * 1000
 
 /** @param {(store: MemoryStore, dir: string) => Promise<void>} fn */
 async function withStore(fn) {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-reflect-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-reflect-'))
   const store = await MemoryStore.open({ rootDir: dir, logger: quiet })
   try {
     await fn(store, dir)

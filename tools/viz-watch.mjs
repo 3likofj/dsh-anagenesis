@@ -38,6 +38,7 @@ const HELP = `anagenesis viz-watch — read-only TUI for a dsh-anagenesis store
   --salience <n>          top records to show (default 5)
   --redaction <level>     ${REDACTION_LEVELS.join(' | ')} (default ${DEFAULT_REDACTION})
   --color <mode>          auto | always | never (default: auto → always on a TTY)
+  --lang <code>           zh | en (default zh) — language of the frame / diagram
   --diagram <kind>        ${DIAGRAM_KINDS.join(' | ')} — render a diagram instead of the dashboard
   --format <fmt>          ${DIAGRAM_FORMATS.join(' | ')} (default mermaid)
   --help                  this text
@@ -51,7 +52,7 @@ it replays the snapshot and journal that the running host already wrote.`
  */
 function parseArgs(argv) {
   /** @type {Record<string, any>} */
-  const out = { color: 'auto' }
+  const out = { color: 'auto', lang: 'zh' }
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index]
     const next = () => {
@@ -70,6 +71,7 @@ function parseArgs(argv) {
     else if (arg === '--salience') out.salience = Number(next())
     else if (arg === '--redaction') out.redaction = next()
     else if (arg === '--color') out.color = next()
+    else if (arg === '--lang') out.lang = next()
     else if (arg === '--diagram') out.diagram = next()
     else if (arg === '--format') out.format = next()
     else {
@@ -125,6 +127,7 @@ async function draw() {
     const model = buildDiagramModel(mirror, {
       kind: opts.diagram,
       redaction,
+      lang: opts.lang,
       limit: { nodes: 40, timeline: Math.max(6, Number(opts.events ?? 8) * 2) },
     })
     return renderDiagram(model, { format: opts.format, embed: false }).text
@@ -134,6 +137,7 @@ async function draw() {
     width,
     color,
     redaction,
+    lang: opts.lang,
     selfStatus,
     limit: { events: Number(opts.events ?? 8), salience: Number(opts.salience ?? 5) },
   })

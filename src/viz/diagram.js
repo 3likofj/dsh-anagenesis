@@ -6,11 +6,18 @@
  * fallback that works in any terminal, log file or diff. All three consume the
  * same model as the TUI, so a new diagram kind is one builder plus (at most)
  * three small serializers — and nothing here touches the store.
+ *
+ * **Language boundary.** Text that ends up *rendered* (the empty-state marks, the
+ * ASCII headers) comes from `./lang.js`, keyed off `model.render.lang`. Source
+ * comments — mermaid's `%%`, D2's `#` — stay English on purpose: they are code
+ * for a renderer, not copy for a reader. Node/edge text is store data.
  * @module dsh-anagenesis/viz/diagram
  */
 
 import { STATES, TRANSITIONS } from '../store/schema.js'
 import { ARTIFACT_VERSION, artifactMeta, wrapArtifact } from './artifact.js'
+import { terminalText } from './lang.js'
+import { padTo } from './tui.js'
 
 export const DIAGRAM_FORMATS = Object.freeze(['mermaid', 'd2', 'ascii'])
 
@@ -67,6 +74,7 @@ export function renderMermaid(model) {
 
 /** @param {any} model @returns {string} */
 function mermaidMemoryGraph(model) {
+  const t = terminalText(model?.render?.lang)
   const lines = ['graph LR']
   // One class per state, with the two states that carry meaning in exploit mode
   // overridden once — a duplicate classDef would be legal but reads like a bug.
@@ -89,15 +97,16 @@ function mermaidMemoryGraph(model) {
     }
     lines.push(`  ${nodeId(edge.from)} -->|${oneLine(edge.rel, 20)}| ${to}`)
   }
-  if (nodes.length === 0) lines.push('  empty["(no memories visible)"]:::dangling')
+  if (nodes.length === 0) lines.push(`  empty["${t.diagram.noMemories}"]:::dangling`)
   return lines.join('\n')
 }
 
 /** @param {any} model @returns {string} */
 function mermaidTimeline(model) {
+  const t = terminalText(model?.render?.lang)
   const lines = ['timeline', `    title ${oneLine(model?.title ?? 'anagenesis timeline', 60)}`, `    section journal v${model?.store?.version ?? 0}`]
   const rows = model?.timeline ?? []
-  if (rows.length === 0) lines.push('        (no governance events in the journal window) : —')
+  if (rows.length === 0) lines.push(`        ${t.diagram.noGovernance} : —`)
   for (const row of rows) lines.push(`        #${row.seq} : ${oneLine(`${row.type} ${row.detail ?? ''}`, 56)}`)
   return lines.join('\n')
 }
@@ -132,6 +141,7 @@ function mermaidLifecycle(model) {
  * @returns {string}
  */
 export function renderD2(model) {
+  const t = terminalText(model?.render?.lang)
   const lines = [`# ${oneLine(model?.title ?? 'anagenesis diagram', 70)}`, `# store v${model?.store?.version ?? 0} · origin ${model?.origin ?? 'live'} · ${model?.redaction?.level ?? 'secrets'}`, '']
   if (model?.kind === 'lifecycle') {
     const observed = model?.transitions ?? []
@@ -159,7 +169,7 @@ export function renderD2(model) {
   for (const node of model?.nodes ?? []) {
     lines.push(`${nodeId(node.id)}: "${oneLine(`[${node.kind}] ${node.label}`, 60)}"`)
   }
-  if ((model?.nodes ?? []).length === 0) lines.push('empty: "(no memories visible)"')
+  if ((model?.nodes ?? []).length === 0) lines.push(`empty: "${t.diagram.noMemories}"`)
   for (const edge of model?.edges ?? []) {
     lines.push(`${nodeId(edge.from)} -> ${nodeId(edge.to)}: ${oneLine(edge.rel, 24)}`)
   }
@@ -171,35 +181,36 @@ export function renderD2(model) {
  * @returns {string}
  */
 export function renderAscii(model) {
+  const t = terminalText(model?.render?.lang)
   if (model?.kind === 'strategy-timeline') {
     const rows = model?.timeline ?? []
-    const lines = [`timeline · ${rows.length} governance event(s), oldest first`]
+    const lines = [t.diagram.asciiTimeline(rows.length)]
     for (const row of rows) lines.push(`  #${String(row.seq).padStart(4)}  ${oneLine(row.type, 22).padEnd(22)}  ${oneLine(row.detail ?? '', 40)}`)
-    if (rows.length === 0) lines.push('  (nothing in the journal window)')
+    if (rows.length === 0) lines.push(t.diagram.asciiNothing)
     return lines.join('\n')
   }
   if (model?.kind === 'lifecycle') {
     const observed = model?.transitions ?? []
     const counts = model?.totals?.byState ?? {}
-    const lines = ['lifecycle · observed transitions', observed.length === 0 ? '  (none observed; the declared machine is in the mermaid/d2 form)' : '']
+    const lines = [t.diagram.asciiLifecycle, observed.length === 0 ? t.diagram.asciiLifecycleNone : '']
     for (const row of observed) {
-      const from = row.from === null ? '(unrecorded)' : row.from
+      const from = row.from === null ? t.diagram.asciiUnrecorded : row.from
       const op = row.from === null ? ` (${String(row.op ?? 'op')})` : ''
-      lines.push(`  ${from.padEnd(11)} -> ${row.to.padEnd(11)} ${row.count}${op}`)
+      lines.push(`  ${padTo(from, 11)} -> ${padTo(row.to, 11)} ${row.count}${op}`)
     }
-    lines.push(`current: ${STATES.map((state) => `${state}=${counts[state] ?? 0}`).join(' ')}`)
+    lines.push(t.diagram.asciiCurrent(STATES.map((state) => `${state}=${counts[state] ?? 0}`).join(' ')))
     return lines.filter((line) => line !== '').join('\n')
   }
   const nodes = model?.nodes ?? []
   const byId = new Map(nodes.map((node) => [String(node.id), node]))
-  const lines = [`memory graph · ${nodes.length} node(s), ${(model?.edges ?? []).length} link(s)`]
+  const lines = [t.diagram.asciiGraph(nodes.length, (model?.edges ?? []).length)]
   for (const node of nodes) {
     lines.push(`  [${node.state}] ${oneLine(node.label, 52)}  ${Number(node.salience).toFixed(2)}`)
     for (const edge of (model?.edges ?? []).filter((row) => String(row.from) === String(node.id))) {
       const target = byId.get(String(edge.to))
-      lines.push(`      └─ ${oneLine(edge.rel, 14).padEnd(14)} -> ${target === undefined ? `[outside window] ${oneLine(edge.to, 20)}` : oneLine(target.label, 40)}`)
+      lines.push(`      └─ ${oneLine(edge.rel, 14).padEnd(14)} -> ${target === undefined ? `${t.diagram.asciiOutside} ${oneLine(edge.to, 20)}` : oneLine(target.label, 40)}`)
     }
   }
-  if (nodes.length === 0) lines.push('  (no memories visible)')
+  if (nodes.length === 0) lines.push(`  ${t.diagram.noMemories}`)
   return lines.join('\n')
 }

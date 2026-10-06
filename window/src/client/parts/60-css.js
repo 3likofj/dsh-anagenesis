@@ -3,9 +3,9 @@
  *
  * **这里曾经有一份自己的样式表，那是这一轮最严重的 bug 的来源。**
  * 渲染层（`src/render/*`）产出标记，`installStyles()` 却装的是这份手写的旧表：
- * 新标记里的 `.evo-card` / `.evo-pbar` / `.evo-svg` / `.evo-c-*` 一条规则都没有，
+ * 新标记里的 `.ana-card` / `.ana-pbar` / `.ana-svg` / `.ana-c-*` 一条规则都没有，
  * 于是仪表盘退化成"标签一行、值一行"的堆叠，图形节点也丢了颜色；更糟的是新标记用
- * `.evo-pane` 而旧表里叫 `.evo-body`，内容区因此没有 `flex:1 1 auto;min-height:0;
+ * `.ana-pane` 而旧表里叫 `.ana-body`，内容区因此没有 `flex:1 1 auto;min-height:0;
  * overflow:auto`，一整屏 3000px 的内容把窗口撑爆、页脚被顶到看不见的地方。
  *
  * 病根不是"少写了几条规则"，而是**同一个职责有两个所有者**：标记和样式表分别

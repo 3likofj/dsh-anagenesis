@@ -200,7 +200,7 @@ function dashboardCards(model) {
       hint: '只读镜像由本窗口的文件读取产生；它永远不会写入你的存储',
     }),
   ]
-  return '<div class="evo-cards">' + cards.join('') + '</div>'
+  return '<div class="ana-cards">' + cards.join('') + '</div>'
 }
 
 /**
@@ -254,22 +254,22 @@ function strategySectionBody(section) {
     const raw = String(item.value ?? '')
     if (item.label === 'health') {
       const bad = item.tone === 'bad'
-      out.push('<div class="evo-row"><div class="evo-row-label">' + esc(label) + '</div><div class="evo-row-value">'
+      out.push('<div class="ana-row"><div class="ana-row-label">' + esc(label) + '</div><div class="ana-row-value">'
         + chip(bad ? 'bad' : item.tone === 'dim' ? 'dim' : 'ok', zhValue(item.label, raw, null)) + '</div><div></div></div>')
       continue
     }
     if (item.label === 'registered') {
-      out.push('<div class="evo-row"><div class="evo-row-label">' + esc(label) + '</div><div class="evo-row-value">'
+      out.push('<div class="ana-row"><div class="ana-row-label">' + esc(label) + '</div><div class="ana-row-value">'
         + raw.split(',').map((name) => chip('info', zhStrategy(name.trim()), zhStrategyHint(name.trim()))).join('')
         + '</div><div></div></div>')
       continue
     }
     const chain = raw.split('→').map((name) => name.trim()).filter((name) => name !== '')
     const body = chain.length === 0
-      ? '<span class="evo-c-dim">（空栈）</span>'
-      : chain.map((name) => chip(name === '(empty)' ? 'dim' : 'accent', zhStrategy(name), zhStrategyHint(name))).join('<span class="evo-arrow">→</span>')
-    out.push('<div class="evo-row"><div class="evo-row-label">' + esc(label === '生效中' && item.label === 'active' ? '生效中' : label) + '</div>'
-      + '<div class="evo-row-value">' + body + '</div><div></div></div>')
+      ? '<span class="ana-c-dim">（空栈）</span>'
+      : chain.map((name) => chip(name === '(empty)' ? 'dim' : 'accent', zhStrategy(name), zhStrategyHint(name))).join('<span class="ana-arrow">→</span>')
+    out.push('<div class="ana-row"><div class="ana-row-label">' + esc(label === '生效中' && item.label === 'active' ? '生效中' : label) + '</div>'
+      + '<div class="ana-row-value">' + body + '</div><div></div></div>')
   }
   if (out.length === 0) return emptyState('没有策略信息', '这一屏读不到策略栈')
   return out.join('')
@@ -307,9 +307,9 @@ function journalSectionBody(section) {
     const match = raw.match(/^(.+?)\s*·\s*(.+?)\s*ago$/)
     const type = match === null ? raw : match[1]
     const age = match === null ? '' : match[2]
-    out.push('<div class="evo-row"><div class="evo-row-label">'
-      + chip('dim', label) + '</div><div class="evo-row-value">'
-      + esc(zhEvent(type)) + '</div><div class="evo-row-value evo-c-dim">'
+    out.push('<div class="ana-row"><div class="ana-row-label">'
+      + chip('dim', label) + '</div><div class="ana-row-value">'
+      + esc(zhEvent(type)) + '</div><div class="ana-row-value ana-c-dim">'
       + esc(age === '' ? '' : zhAgeToken(age) + '前') + '</div></div>')
   }
   return out.join('')
@@ -327,19 +327,19 @@ function salienceSectionBody(section) {
     const salience = match === null ? 0 : Number(match[1])
     const kind = match === null ? '' : match[2]
     const state = match === null ? '' : match[3]
-    out.push('<div class="evo-rank">'
-      + '<div class="evo-rank-no">' + index + '</div>'
-      + '<div class="evo-rank-main"><div class="evo-rank-subject">' + esc(item.label) + '</div>'
-      + (item.note === undefined || item.note === '' ? '' : '<div class="evo-rank-body">' + esc(item.note) + '</div>')
+    out.push('<div class="ana-rank">'
+      + '<div class="ana-rank-no">' + index + '</div>'
+      + '<div class="ana-rank-main"><div class="ana-rank-subject">' + esc(item.label) + '</div>'
+      + (item.note === undefined || item.note === '' ? '' : '<div class="ana-rank-body">' + esc(item.note) + '</div>')
       + '</div>'
-      + '<div class="evo-rank-right">'
-      + '<div class="evo-chips">'
+      + '<div class="ana-rank-right">'
+      + '<div class="ana-chips">'
       + (kind === '' ? '' : chip(kindColor(kind), zhKind(kind)))
       + (state === '' ? '' : chip(stateColor(state), zhState(state), zhStateHint(state)))
       + '</div>'
-      + '<div class="evo-meter" title="重要度 ' + salience.toFixed(2) + '（0–1，越高越容易被召回）">'
-      + '<div class="evo-meter-fill" style="width:' + (Math.max(0, Math.min(1, salience)) * 100).toFixed(0) + '%"></div></div>'
-      + '<div class="evo-num">' + salience.toFixed(2) + '</div>'
+      + '<div class="ana-meter" title="重要度 ' + salience.toFixed(2) + '（0–1，越高越容易被召回）">'
+      + '<div class="ana-meter-fill" style="width:' + (Math.max(0, Math.min(1, salience)) * 100).toFixed(0) + '%"></div></div>'
+      + '<div class="ana-num">' + salience.toFixed(2) + '</div>'
       + '</div></div>')
   }
   if (out.length === 0) return emptyState('还没有可排行的记忆', '先让 agent 记住点什么')
@@ -360,7 +360,7 @@ function plainSectionBody(section) {
     hint: item.label === 'safe mode' ? '开启时元层冻结：策略与调参不再自动变化' : '',
   })).join('')
   if (skip.length > 0 && rows.length > 0) {
-    return body + '<div class="evo-row"><div class="evo-row-note">规模、活跃比例与数据来源见上方指标卡</div></div>'
+    return body + '<div class="ana-row"><div class="ana-row-note">规模、活跃比例与数据来源见上方指标卡</div></div>'
   }
   return body
 }

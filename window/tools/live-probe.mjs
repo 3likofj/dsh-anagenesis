@@ -46,7 +46,7 @@ function parseArgs(argv) {
 
 /** A store the probe may write to: it is its own sandbox, built by hand. */
 async function makeSandboxStore() {
-  const root = await mkdtemp(join(tmpdir(), 'evo-window-probe-'))
+  const root = await mkdtemp(join(tmpdir(), 'ana-window-probe-'))
   await mkdir(join(root, 'journal'), { recursive: true })
   const now = Date.now()
   const state = {
@@ -346,6 +346,8 @@ try {
       color: 'never',
       limit: { events: 8, salience: 5 },
       redaction: 'secrets',
+      // 与窗口路由保持一致：窗口的 `/frame` 走 zh，所以这里的"直接渲染"也必须走 zh。
+      lang: 'zh',
     }), { width: 88, color: 'never', isTty: false })
     const remote = String(fresh.body.text ?? '')
     byteEqual = direct === remote

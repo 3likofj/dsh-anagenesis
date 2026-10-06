@@ -28,7 +28,7 @@ const quiet = { info() {}, warn() {}, debug() {} }
 
 /** @param {(store: MemoryStore, dir: string) => Promise<void>} fn */
 async function withStore(fn) {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-core-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-core-'))
   const store = await MemoryStore.open({ rootDir: dir, logger: quiet })
   try {
     await fn(store, dir)
@@ -93,7 +93,7 @@ test('schema: migrating garbage yields a usable empty state instead of throwing'
 // ── durability and restart ──────────────────────────────────────────────────
 
 test('store: a committed memory survives a restart even when the snapshot is deleted (journal wins)', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-restart-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-restart-'))
   try {
     const first = await MemoryStore.open({ rootDir: dir, logger: quiet })
     const ops = createMemoryOps({ store: first })
@@ -115,7 +115,7 @@ test('store: a committed memory survives a restart even when the snapshot is del
 })
 
 test('store: reference counting gives two rows one writer for the same rootDir', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-pool-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-pool-'))
   try {
     const a = await MemoryStore.acquire({ rootDir: dir, logger: quiet })
     const b = await MemoryStore.acquire({ rootDir: dir, logger: quiet })
@@ -166,7 +166,7 @@ test('ops: remember deduplicates identical content instead of growing the store'
 })
 
 test('ops: the write counter rides the commit that owns it and survives a restart', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-writes-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-writes-'))
   try {
     const store = await MemoryStore.open({ rootDir: dir, logger: quiet })
     const ops = createMemoryOps({ store })
@@ -588,7 +588,7 @@ test('meta: observe -> propose -> apply -> rollback is a closed, audited loop', 
 })
 
 test('meta: the learning state is state — it survives a restart and a revert takes it back out', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-tuning-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-tuning-'))
   try {
     const store = await MemoryStore.open({ rootDir: dir, logger: quiet })
     const registry = new StrategyRegistry({ store, logger: quiet })
@@ -714,7 +714,7 @@ test('revert: a stack transaction that created a scope can be undone, a live sta
 })
 
 test('journal: compaction archives the log, keeps every seq traceable, and still rebuilds the state', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-compact-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-compact-'))
   try {
     const store = await MemoryStore.open({ rootDir: dir, logger: quiet })
     const ops = createMemoryOps({ store })
@@ -792,7 +792,7 @@ test('journal: compaction archives the log, keeps every seq traceable, and still
 })
 
 test('journal: the segment-count guard merges the oldest archives without losing a seq', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-segmerge-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-segmerge-'))
   try {
     const store = await MemoryStore.open({ rootDir: dir, logger: quiet })
     const ops = createMemoryOps({ store })
@@ -824,7 +824,7 @@ test('journal: the segment-count guard merges the oldest archives without losing
 })
 
 test('journal: the opt-in retention policy prunes whole segments, marks it, and explains the lost reverts', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-retain-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-retain-'))
   try {
     const store = await MemoryStore.open({ rootDir: dir, logger: quiet })
     const ops = createMemoryOps({ store })

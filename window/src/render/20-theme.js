@@ -12,17 +12,17 @@
 
 /** 语义色名 → CSS 变量。`dim` 是"降低视觉权重"，不是"不可用"。 */
 const ANA_VAR = Object.freeze({
-  ok: 'var(--evo-ok)',
-  okBright: 'var(--evo-ok-bright)',
-  warn: 'var(--evo-warn)',
-  bad: 'var(--evo-bad)',
-  info: 'var(--evo-info)',
-  violet: 'var(--evo-violet)',
-  indigo: 'var(--evo-indigo)',
-  teal: 'var(--evo-teal)',
-  accent: 'var(--evo-accent)',
-  dim: 'var(--evo-dim)',
-  plain: 'var(--evo-fg)',
+  ok: 'var(--ana-ok)',
+  okBright: 'var(--ana-ok-bright)',
+  warn: 'var(--ana-warn)',
+  bad: 'var(--ana-bad)',
+  info: 'var(--ana-info)',
+  violet: 'var(--ana-violet)',
+  indigo: 'var(--ana-indigo)',
+  teal: 'var(--ana-teal)',
+  accent: 'var(--ana-accent)',
+  dim: 'var(--ana-dim)',
+  plain: 'var(--ana-fg)',
 })
 
 /** 模型里的 `tone`（`src/viz/model.js` 产出）→ 语义色。 */
@@ -133,220 +133,220 @@ function evoColor(name) {
  * 一个没有本窗口的页面里匹配零个元素；卸载时只删掉自己那一个 `<style>` 节点。
  */
 const ANA_CSS = `
-[data-dsh-anagenesis-window]{--evo-ok:var(--dsw-alias-state-success-primary,#3fb950);
---evo-ok-bright:#2fd07a;--evo-warn:var(--dsw-alias-state-warn-primary,#d9a03a);
---evo-bad:var(--dsw-alias-state-error-primary,#e0554e);
---evo-info:#5aa9e6;--evo-violet:#a97bff;--evo-indigo:#6b7cff;--evo-teal:#3fbfae;
---evo-accent:var(--dsw-alias-brand-primary,#4d6bfe);
---evo-dim:var(--dsw-alias-state-idle-primary,#8b8b93);
---evo-fg:var(--dsw-alias-label-primary,#e9e9ec);
---evo-fg2:var(--dsw-alias-label-secondary,#b6b6bd);
---evo-line:var(--dsw-alias-border-l1,rgba(127,127,127,.24));
---evo-line2:var(--dsw-alias-border-l2,rgba(127,127,127,.38));
---evo-bg:var(--dsw-alias-bg-overlay,#1c1c20);
---evo-bg2:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.08));
---evo-bg1:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.16));
---evo-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Microsoft YaHei",monospace;
---evo-sans:system-ui,-apple-system,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
-box-sizing:border-box;color:var(--evo-fg);font-family:var(--evo-sans);font-size:13px;line-height:1.6}
+[data-dsh-anagenesis-window]{--ana-ok:var(--dsw-alias-state-success-primary,#3fb950);
+--ana-ok-bright:#2fd07a;--ana-warn:var(--dsw-alias-state-warn-primary,#d9a03a);
+--ana-bad:var(--dsw-alias-state-error-primary,#e0554e);
+--ana-info:#5aa9e6;--ana-violet:#a97bff;--ana-indigo:#6b7cff;--ana-teal:#3fbfae;
+--ana-accent:var(--dsw-alias-brand-primary,#4d6bfe);
+--ana-dim:var(--dsw-alias-state-idle-primary,#8b8b93);
+--ana-fg:var(--dsw-alias-label-primary,#e9e9ec);
+--ana-fg2:var(--dsw-alias-label-secondary,#b6b6bd);
+--ana-line:var(--dsw-alias-border-l1,rgba(127,127,127,.24));
+--ana-line2:var(--dsw-alias-border-l2,rgba(127,127,127,.38));
+--ana-bg:var(--dsw-alias-bg-overlay,#1c1c20);
+--ana-bg2:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.08));
+--ana-bg1:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.16));
+--ana-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Microsoft YaHei",monospace;
+--ana-sans:system-ui,-apple-system,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+box-sizing:border-box;color:var(--ana-fg);font-family:var(--ana-sans);font-size:13px;line-height:1.6}
 [data-dsh-anagenesis-window] *{box-sizing:border-box}
 /* React 注入 HTML 必须有一个宿主节点（dangerouslySetInnerHTML），而那个节点不该
    参与布局：display:contents 让里面的标题栏/工具栏/页脚直接成为窗口的 flex 子项。 */
-.evo-chrome{display:contents}
+.ana-chrome{display:contents}
 
 /* ── 窗口外壳 ───────────────────────────────────────────────────────────── */
 [data-dsh-anagenesis-window="window"]{position:fixed;z-index:60;display:flex;flex-direction:column;
 pointer-events:auto;width:min(880px,94vw);height:min(640px,82vh);min-width:460px;min-height:280px;
-overflow:hidden;resize:both;border:1px solid var(--evo-line2);border-radius:12px;background:var(--evo-bg);
+overflow:hidden;resize:both;border:1px solid var(--ana-line2);border-radius:12px;background:var(--ana-bg);
 box-shadow:0 20px 64px rgba(0,0,0,.44)}
 /* 工具栏在两行里放得下就绝不裁切：overflow-x:auto 会把「关闭」推到看不见的地方，
-   而一个看不见的关闭按钮比一个两行高的工具栏糟得多。控件本身不换行（见 .evo-field）。 */
-.evo-bar{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:wrap;row-gap:6px;
-padding:8px 10px;border-bottom:1px solid var(--evo-line);background:var(--evo-bg2)}
-[data-dsh-anagenesis-window="window"] .evo-bar.evo-drag{cursor:grab;user-select:none}
-[data-dsh-anagenesis-window="window"] .evo-bar.evo-drag:active{cursor:grabbing}
-.evo-title{flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:650;font-size:13px}
-.evo-bar .evo-spacer{flex:1 1 auto}
-.evo-btn{appearance:none;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;
+   而一个看不见的关闭按钮比一个两行高的工具栏糟得多。控件本身不换行（见 .ana-field）。 */
+.ana-bar{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:wrap;row-gap:6px;
+padding:8px 10px;border-bottom:1px solid var(--ana-line);background:var(--ana-bg2)}
+[data-dsh-anagenesis-window="window"] .ana-bar.ana-drag{cursor:grab;user-select:none}
+[data-dsh-anagenesis-window="window"] .ana-bar.ana-drag:active{cursor:grabbing}
+.ana-title{flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:650;font-size:13px}
+.ana-bar .ana-spacer{flex:1 1 auto}
+.ana-btn{appearance:none;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;
 flex:0 0 auto;
-border:1px solid var(--evo-line);border-radius:7px;background:transparent;color:var(--evo-fg2);
+border:1px solid var(--ana-line);border-radius:7px;background:transparent;color:var(--ana-fg2);
 font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
-.evo-btn:hover{background:var(--evo-bg1);color:var(--evo-fg)}
-.evo-btn[aria-pressed="true"]{border-color:var(--evo-accent);color:var(--evo-accent);background:color-mix(in srgb,var(--evo-accent) 12%,transparent)}
-.evo-btn.evo-icon{padding:0 7px;font-size:13px}
+.ana-btn:hover{background:var(--ana-bg1);color:var(--ana-fg)}
+.ana-btn[aria-pressed="true"]{border-color:var(--ana-accent);color:var(--ana-accent);background:color-mix(in srgb,var(--ana-accent) 12%,transparent)}
+.ana-btn.ana-icon{padding:0 7px;font-size:13px}
 /* 控件标签绝不换行：第一版截图里「节点上限」被挤成两行，是这个 flex 容器收缩导致的。 */
-.evo-field{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;white-space:nowrap;
-font-size:12px;color:var(--evo-fg2)}
-.evo-input{height:26px;border:1px solid var(--evo-line);border-radius:7px;background:transparent;
-color:var(--evo-fg);font:inherit;font-size:12px;padding:0 6px}
-.evo-input--w{width:60px}
-.evo-sep{width:1px;height:18px;background:var(--evo-line);margin:0 2px}
-.evo-foot{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:6px 10px;
-border-top:1px solid var(--evo-line);font-size:11.5px;color:var(--evo-fg2)}
-.evo-warn-text{color:var(--evo-warn)}
-.evo-error-text{color:var(--evo-bad)}
-.evo-ok-text{color:var(--evo-ok)}
+.ana-field{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;white-space:nowrap;
+font-size:12px;color:var(--ana-fg2)}
+.ana-input{height:26px;border:1px solid var(--ana-line);border-radius:7px;background:transparent;
+color:var(--ana-fg);font:inherit;font-size:12px;padding:0 6px}
+.ana-input--w{width:60px}
+.ana-sep{width:1px;height:18px;background:var(--ana-line);margin:0 2px}
+.ana-foot{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:6px 10px;
+border-top:1px solid var(--ana-line);font-size:11.5px;color:var(--ana-fg2)}
+.ana-warn-text{color:var(--ana-warn)}
+.ana-error-text{color:var(--ana-bad)}
+.ana-ok-text{color:var(--ana-ok)}
 
 /* ── 内容容器（窗口与预览共用） ─────────────────────────────────────────── */
-.evo-pane{flex:1 1 auto;min-height:0;overflow:auto;padding:12px}
-.evo-pane--flush{padding:0}
+.ana-pane{flex:1 1 auto;min-height:0;overflow:auto;padding:12px}
+.ana-pane--flush{padding:0}
 
 /* ── 关键指标卡 ─────────────────────────────────────────────────────────── */
-.evo-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-bottom:12px}
-.evo-card{position:relative;padding:10px 12px;border:1px solid var(--evo-line);border-radius:10px;
-background:var(--evo-bg2);overflow:hidden}
-.evo-card::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--evo-dim);opacity:.9}
-.evo-card--ok::before{background:var(--evo-ok)}
-.evo-card--warn::before{background:var(--evo-warn)}
-.evo-card--bad::before{background:var(--evo-bad)}
-.evo-card--accent::before{background:var(--evo-accent)}
-.evo-card--plain::before{background:var(--evo-dim)}
-.evo-card-label{font-size:11.5px;color:var(--evo-fg2);letter-spacing:.02em}
-.evo-card-value{font-size:23px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums}
-.evo-card-value small{font-size:12px;font-weight:500;color:var(--evo-fg2);margin-left:5px}
-.evo-card--bad .evo-card-value{color:var(--evo-bad)}
-.evo-card--warn .evo-card-value{color:var(--evo-warn)}
-.evo-card--ok .evo-card-value{color:var(--evo-ok)}
-.evo-card-sub{font-size:11.5px;color:var(--evo-fg2)}
-.evo-card--hot{border-color:var(--evo-bad);background:color-mix(in srgb,var(--evo-bad) 10%,transparent)}
+.ana-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-bottom:12px}
+.ana-card{position:relative;padding:10px 12px;border:1px solid var(--ana-line);border-radius:10px;
+background:var(--ana-bg2);overflow:hidden}
+.ana-card::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--ana-dim);opacity:.9}
+.ana-card--ok::before{background:var(--ana-ok)}
+.ana-card--warn::before{background:var(--ana-warn)}
+.ana-card--bad::before{background:var(--ana-bad)}
+.ana-card--accent::before{background:var(--ana-accent)}
+.ana-card--plain::before{background:var(--ana-dim)}
+.ana-card-label{font-size:11.5px;color:var(--ana-fg2);letter-spacing:.02em}
+.ana-card-value{font-size:23px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums}
+.ana-card-value small{font-size:12px;font-weight:500;color:var(--ana-fg2);margin-left:5px}
+.ana-card--bad .ana-card-value{color:var(--ana-bad)}
+.ana-card--warn .ana-card-value{color:var(--ana-warn)}
+.ana-card--ok .ana-card-value{color:var(--ana-ok)}
+.ana-card-sub{font-size:11.5px;color:var(--ana-fg2)}
+.ana-card--hot{border-color:var(--ana-bad);background:color-mix(in srgb,var(--ana-bad) 10%,transparent)}
 
 /* ── 分区卡片 ───────────────────────────────────────────────────────────── */
-.evo-sect{margin-bottom:12px;border:1px solid var(--evo-line);border-radius:10px;background:var(--evo-bg2);overflow:hidden}
-.evo-sect-head{display:flex;align-items:baseline;gap:8px;padding:8px 12px;border-bottom:1px solid var(--evo-line)}
-.evo-sect-title{font-weight:650;font-size:13px}
-.evo-sect-hint{font-size:11.5px;color:var(--evo-fg2)}
-.evo-sect-body{padding:6px 12px 10px}
+.ana-sect{margin-bottom:12px;border:1px solid var(--ana-line);border-radius:10px;background:var(--ana-bg2);overflow:hidden}
+.ana-sect-head{display:flex;align-items:baseline;gap:8px;padding:8px 12px;border-bottom:1px solid var(--ana-line)}
+.ana-sect-title{font-weight:650;font-size:13px}
+.ana-sect-hint{font-size:11.5px;color:var(--ana-fg2)}
+.ana-sect-body{padding:6px 12px 10px}
 
 /* ── 行 ─────────────────────────────────────────────────────────────────── */
-.evo-row{display:grid;grid-template-columns:minmax(96px,34%) 1fr auto;align-items:center;gap:10px;
-padding:5px 0;border-bottom:1px dashed color-mix(in srgb,var(--evo-line) 70%,transparent)}
-.evo-row:last-child{border-bottom:0}
-.evo-row-label{color:var(--evo-fg2);overflow-wrap:anywhere}
-.evo-row-value{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.evo-row-note{grid-column:1 / -1;font-size:11.5px;color:var(--evo-fg2);font-family:var(--evo-mono)}
-.evo-tone-accent .evo-row-value{color:var(--evo-accent);font-weight:600}
-.evo-tone-ok .evo-row-value{color:var(--evo-ok);font-weight:600}
-.evo-tone-warn .evo-row-value{color:var(--evo-warn);font-weight:600}
-.evo-tone-bad .evo-row-value{color:var(--evo-bad);font-weight:700}
-.evo-tone-plain .evo-row-value{color:var(--evo-fg)}
-.evo-tone-dim{opacity:.62}
-.evo-em{color:var(--evo-fg);font-weight:650}
+.ana-row{display:grid;grid-template-columns:minmax(96px,34%) 1fr auto;align-items:center;gap:10px;
+padding:5px 0;border-bottom:1px dashed color-mix(in srgb,var(--ana-line) 70%,transparent)}
+.ana-row:last-child{border-bottom:0}
+.ana-row-label{color:var(--ana-fg2);overflow-wrap:anywhere}
+.ana-row-value{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.ana-row-note{grid-column:1 / -1;font-size:11.5px;color:var(--ana-fg2);font-family:var(--ana-mono)}
+.ana-tone-accent .ana-row-value{color:var(--ana-accent);font-weight:600}
+.ana-tone-ok .ana-row-value{color:var(--ana-ok);font-weight:600}
+.ana-tone-warn .ana-row-value{color:var(--ana-warn);font-weight:600}
+.ana-tone-bad .ana-row-value{color:var(--ana-bad);font-weight:700}
+.ana-tone-plain .ana-row-value{color:var(--ana-fg)}
+.ana-tone-dim{opacity:.62}
+.ana-em{color:var(--ana-fg);font-weight:650}
 
 /* ── 进度条（渐变 + 鲜明色块） ────────────────────────────────────────────
-   类名是 .evo-pbar* 而不是 .evo-bar*：.evo-bar 已经是窗口与预览的**工具栏**，
+   类名是 .ana-pbar* 而不是 .ana-bar*：.ana-bar 已经是窗口与预览的**工具栏**，
    两者撞名时后一条规则的 height:18px/overflow:hidden 会把工具栏压成一条线 ——
    这个 bug 在截图里表现为"工具栏被裁掉"，实际是选择器互相覆盖。 */
-.evo-pbar{position:relative;height:18px;border-radius:5px;background:color-mix(in srgb,var(--evo-dim) 18%,transparent);
+.ana-pbar{position:relative;height:18px;border-radius:5px;background:color-mix(in srgb,var(--ana-dim) 18%,transparent);
 overflow:hidden;min-width:80px}
-.evo-pbar-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,color-mix(in srgb,var(--evo-c) 55%,transparent),var(--evo-c))}
-.evo-pbar--ok{--evo-c:var(--evo-ok)}
-.evo-pbar--warn{--evo-c:var(--evo-warn)}
-.evo-pbar--bad{--evo-c:var(--evo-bad)}
-.evo-pbar--accent{--evo-c:var(--evo-accent)}
-.evo-pbar--info{--evo-c:var(--evo-info)}
-.evo-pbar--violet{--evo-c:var(--evo-violet)}
-.evo-pbar--indigo{--evo-c:var(--evo-indigo)}
-.evo-pbar--teal{--evo-c:var(--evo-teal)}
-.evo-pbar--dim{--evo-c:var(--evo-dim)}
-.evo-pbar--plain{--evo-c:var(--evo-fg2)}
-.evo-pbar-cell{display:grid;grid-template-columns:minmax(96px,34%) 1fr 62px;align-items:center;gap:10px;padding:5px 0}
-.evo-num{text-align:right;font-variant-numeric:tabular-nums;color:var(--evo-fg2)}
-.evo-pbar-pct{opacity:.75}
+.ana-pbar-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,color-mix(in srgb,var(--ana-c) 55%,transparent),var(--ana-c))}
+.ana-pbar--ok{--ana-c:var(--ana-ok)}
+.ana-pbar--warn{--ana-c:var(--ana-warn)}
+.ana-pbar--bad{--ana-c:var(--ana-bad)}
+.ana-pbar--accent{--ana-c:var(--ana-accent)}
+.ana-pbar--info{--ana-c:var(--ana-info)}
+.ana-pbar--violet{--ana-c:var(--ana-violet)}
+.ana-pbar--indigo{--ana-c:var(--ana-indigo)}
+.ana-pbar--teal{--ana-c:var(--ana-teal)}
+.ana-pbar--dim{--ana-c:var(--ana-dim)}
+.ana-pbar--plain{--ana-c:var(--ana-fg2)}
+.ana-pbar-cell{display:grid;grid-template-columns:minmax(96px,34%) 1fr 62px;align-items:center;gap:10px;padding:5px 0}
+.ana-num{text-align:right;font-variant-numeric:tabular-nums;color:var(--ana-fg2)}
+.ana-pbar-pct{opacity:.75}
 
 /* ── 徽标 / 色块 ────────────────────────────────────────────────────────── */
-.evo-chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;
+.ana-chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;
 border:1px solid currentColor;font-size:11.5px;line-height:1;white-space:nowrap}
-.evo-chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
-.evo-c-ok{color:var(--evo-ok)}.evo-c-okBright{color:var(--evo-ok-bright)}
-.evo-c-warn{color:var(--evo-warn)}.evo-c-bad{color:var(--evo-bad)}
-.evo-c-info{color:var(--evo-info)}.evo-c-violet{color:var(--evo-violet)}
-.evo-c-indigo{color:var(--evo-indigo)}.evo-c-teal{color:var(--evo-teal)}
-.evo-c-accent{color:var(--evo-accent)}.evo-c-dim{color:var(--evo-dim)}.evo-c-plain{color:var(--evo-fg)}
-.evo-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.evo-arrow{color:var(--evo-fg2);padding:0 2px}
+.ana-chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.ana-c-ok{color:var(--ana-ok)}.ana-c-okBright{color:var(--ana-ok-bright)}
+.ana-c-warn{color:var(--ana-warn)}.ana-c-bad{color:var(--ana-bad)}
+.ana-c-info{color:var(--ana-info)}.ana-c-violet{color:var(--ana-violet)}
+.ana-c-indigo{color:var(--ana-indigo)}.ana-c-teal{color:var(--ana-teal)}
+.ana-c-accent{color:var(--ana-accent)}.ana-c-dim{color:var(--ana-dim)}.ana-c-plain{color:var(--ana-fg)}
+.ana-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ana-arrow{color:var(--ana-fg2);padding:0 2px}
 
 /* ── 排行 ───────────────────────────────────────────────────────────────── */
-.evo-rank{display:grid;grid-template-columns:22px 1fr auto;gap:9px;align-items:start;padding:7px 0;
-border-bottom:1px dashed color-mix(in srgb,var(--evo-line) 70%,transparent)}
-.evo-rank:last-child{border-bottom:0}
-.evo-rank-no{color:var(--evo-fg2);font-variant-numeric:tabular-nums;text-align:right;font-size:12px}
-.evo-rank-main{min-width:0}
-.evo-rank-subject{overflow-wrap:anywhere}
-.evo-rank-body{font-size:11.5px;color:var(--evo-fg2);overflow-wrap:anywhere}
-.evo-rank-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
-.evo-meter{width:74px;height:6px;border-radius:3px;background:color-mix(in srgb,var(--evo-dim) 20%,transparent)}
-.evo-meter-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,color-mix(in srgb,var(--evo-accent) 45%,transparent),var(--evo-accent))}
+.ana-rank{display:grid;grid-template-columns:22px 1fr auto;gap:9px;align-items:start;padding:7px 0;
+border-bottom:1px dashed color-mix(in srgb,var(--ana-line) 70%,transparent)}
+.ana-rank:last-child{border-bottom:0}
+.ana-rank-no{color:var(--ana-fg2);font-variant-numeric:tabular-nums;text-align:right;font-size:12px}
+.ana-rank-main{min-width:0}
+.ana-rank-subject{overflow-wrap:anywhere}
+.ana-rank-body{font-size:11.5px;color:var(--ana-fg2);overflow-wrap:anywhere}
+.ana-rank-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.ana-meter{width:74px;height:6px;border-radius:3px;background:color-mix(in srgb,var(--ana-dim) 20%,transparent)}
+.ana-meter-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,color-mix(in srgb,var(--ana-accent) 45%,transparent),var(--ana-accent))}
 
 /* ── 图表 ───────────────────────────────────────────────────────────────── */
-.evo-graph{position:relative;width:100%;min-height:240px;overflow:auto;
-background:radial-gradient(circle at 1px 1px,color-mix(in srgb,var(--evo-dim) 26%,transparent) 1px,transparent 0)
+.ana-graph{position:relative;width:100%;min-height:240px;overflow:auto;
+background:radial-gradient(circle at 1px 1px,color-mix(in srgb,var(--ana-dim) 26%,transparent) 1px,transparent 0)
 0 0/18px 18px}
-.evo-graph-inner{transform-origin:0 0}
-.evo-svg{display:block}
-.evo-svg .evo-edge{fill:none;stroke-width:1.6}
-.evo-svg .evo-edge--dangling{stroke-dasharray:5 4;opacity:.75}
-.evo-svg .evo-elabel{font-size:10.5px;font-family:var(--evo-sans)}
-.evo-svg .evo-elabel-bg{fill:var(--evo-bg);fill-opacity:.88;stroke:none}
-.evo-svg .evo-node-box{stroke-width:1.6;rx:9}
-.evo-svg .evo-node-label{font-size:12px;font-family:var(--evo-sans);fill:var(--evo-fg)}
-.evo-svg .evo-node-sub{font-size:10px;font-family:var(--evo-sans);fill:var(--evo-fg2)}
-.evo-svg .evo-node{cursor:default}
-.evo-svg .evo-node:hover .evo-node-box{filter:brightness(1.22)}
-.evo-svg .evo-dot{stroke:none}
-.evo-zoom{display:inline-flex;gap:4px;align-items:center}
+.ana-graph-inner{transform-origin:0 0}
+.ana-svg{display:block}
+.ana-svg .ana-edge{fill:none;stroke-width:1.6}
+.ana-svg .ana-edge--dangling{stroke-dasharray:5 4;opacity:.75}
+.ana-svg .ana-elabel{font-size:10.5px;font-family:var(--ana-sans)}
+.ana-svg .ana-elabel-bg{fill:var(--ana-bg);fill-opacity:.88;stroke:none}
+.ana-svg .ana-node-box{stroke-width:1.6;rx:9}
+.ana-svg .ana-node-label{font-size:12px;font-family:var(--ana-sans);fill:var(--ana-fg)}
+.ana-svg .ana-node-sub{font-size:10px;font-family:var(--ana-sans);fill:var(--ana-fg2)}
+.ana-svg .ana-node{cursor:default}
+.ana-svg .ana-node:hover .ana-node-box{filter:brightness(1.22)}
+.ana-svg .ana-dot{stroke:none}
+.ana-zoom{display:inline-flex;gap:4px;align-items:center}
 
 /* ── 图例 ───────────────────────────────────────────────────────────────── */
-.evo-legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 12px;border-top:1px solid var(--evo-line);
-font-size:11.5px;color:var(--evo-fg2);align-items:center}
-.evo-legend-item{display:inline-flex;align-items:center;gap:5px}
-.evo-legend-swatch{width:10px;height:10px;border-radius:3px;background:currentColor;flex:0 0 auto}
-.evo-legend-title{font-weight:600;color:var(--evo-fg)}
+.ana-legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 12px;border-top:1px solid var(--ana-line);
+font-size:11.5px;color:var(--ana-fg2);align-items:center}
+.ana-legend-item{display:inline-flex;align-items:center;gap:5px}
+.ana-legend-swatch{width:10px;height:10px;border-radius:3px;background:currentColor;flex:0 0 auto}
+.ana-legend-title{font-weight:600;color:var(--ana-fg)}
 
 /* ── 时间线 ─────────────────────────────────────────────────────────────── */
-.evo-tl{position:relative;padding:4px 0 4px 4px}
-.evo-tl::before{content:"";position:absolute;left:15px;top:8px;bottom:8px;width:2px;
-background:linear-gradient(180deg,var(--evo-accent),var(--evo-line))}
-.evo-tl-item{position:relative;display:grid;grid-template-columns:26px 1fr;gap:12px;padding:7px 0 7px 0}
-.evo-tl-dot{position:relative;z-index:1;width:12px;height:12px;margin:5px auto 0;border-radius:50%;
-background:var(--evo-c,var(--evo-dim));box-shadow:0 0 0 3px var(--evo-bg)}
-.evo-tl-main{min-width:0}
-.evo-tl-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.evo-tl-type{font-weight:650;color:var(--evo-c,var(--evo-fg))}
-.evo-tl-meta{font-size:11.5px;color:var(--evo-fg2);font-variant-numeric:tabular-nums}
-.evo-tl-detail{font-size:12px;color:var(--evo-fg2);font-family:var(--evo-mono);overflow-wrap:anywhere}
+.ana-tl{position:relative;padding:4px 0 4px 4px}
+.ana-tl::before{content:"";position:absolute;left:15px;top:8px;bottom:8px;width:2px;
+background:linear-gradient(180deg,var(--ana-accent),var(--ana-line))}
+.ana-tl-item{position:relative;display:grid;grid-template-columns:26px 1fr;gap:12px;padding:7px 0 7px 0}
+.ana-tl-dot{position:relative;z-index:1;width:12px;height:12px;margin:5px auto 0;border-radius:50%;
+background:var(--ana-c,var(--ana-dim));box-shadow:0 0 0 3px var(--ana-bg)}
+.ana-tl-main{min-width:0}
+.ana-tl-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ana-tl-type{font-weight:650;color:var(--ana-c,var(--ana-fg))}
+.ana-tl-meta{font-size:11.5px;color:var(--ana-fg2);font-variant-numeric:tabular-nums}
+.ana-tl-detail{font-size:12px;color:var(--ana-fg2);font-family:var(--ana-mono);overflow-wrap:anywhere}
 
 /* ── 空态 / 提示 ────────────────────────────────────────────────────────── */
-.evo-text{font-family:var(--evo-mono);font-size:12px;line-height:1.5;white-space:pre;overflow:auto;margin:0;
-color:var(--evo-fg)}
-.evo-empty{padding:26px 18px;text-align:center;color:var(--evo-fg2)}
-.evo-empty-title{font-size:14px;font-weight:650;color:var(--evo-fg);margin-bottom:6px}
-.evo-notice{display:flex;gap:8px;align-items:flex-start;padding:8px 12px;border-radius:8px;
-background:color-mix(in srgb,var(--evo-warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--evo-warn) 40%,transparent);
-color:var(--evo-fg);font-size:12px;margin-bottom:10px}
-.evo-notice--bad{background:color-mix(in srgb,var(--evo-bad) 12%,transparent);
-border-color:color-mix(in srgb,var(--evo-bad) 42%,transparent)}
-.evo-notice--info{background:color-mix(in srgb,var(--evo-info) 12%,transparent);
-border-color:color-mix(in srgb,var(--evo-info) 40%,transparent)}
+.ana-text{font-family:var(--ana-mono);font-size:12px;line-height:1.5;white-space:pre;overflow:auto;margin:0;
+color:var(--ana-fg)}
+.ana-empty{padding:26px 18px;text-align:center;color:var(--ana-fg2)}
+.ana-empty-title{font-size:14px;font-weight:650;color:var(--ana-fg);margin-bottom:6px}
+.ana-notice{display:flex;gap:8px;align-items:flex-start;padding:8px 12px;border-radius:8px;
+background:color-mix(in srgb,var(--ana-warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--ana-warn) 40%,transparent);
+color:var(--ana-fg);font-size:12px;margin-bottom:10px}
+.ana-notice--bad{background:color-mix(in srgb,var(--ana-bad) 12%,transparent);
+border-color:color-mix(in srgb,var(--ana-bad) 42%,transparent)}
+.ana-notice--info{background:color-mix(in srgb,var(--ana-info) 12%,transparent);
+border-color:color-mix(in srgb,var(--ana-info) 40%,transparent)}
 
 /* ── 入口按钮（顶部栏 / 侧栏） ──────────────────────────────────────────── */
-.evo-header-button{appearance:none;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;
-border:1px solid var(--evo-line);border-radius:7px;background:transparent;color:var(--evo-fg2);
-font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;font-family:var(--evo-sans)}
-.evo-header-button:hover{background:var(--evo-bg1);color:var(--evo-fg)}
-.evo-header-button[aria-pressed="true"]{border-color:var(--evo-accent);color:var(--evo-accent)}
-.evo-launcher{display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:20px;
-font-family:var(--evo-sans);color:var(--evo-fg)}
-.evo-launch-btn{appearance:none;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;
-border:1px solid var(--evo-accent);border-radius:9px;background:color-mix(in srgb,var(--evo-accent) 12%,transparent);
-color:var(--evo-accent);font:inherit;font-weight:650;cursor:pointer}
-.evo-launch-btn:hover{background:color-mix(in srgb,var(--evo-accent) 22%,transparent)}
-.evo-launch-hint{color:var(--evo-fg2);font-size:12px;max-width:48ch}
+.ana-header-button{appearance:none;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;
+border:1px solid var(--ana-line);border-radius:7px;background:transparent;color:var(--ana-fg2);
+font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;font-family:var(--ana-sans)}
+.ana-header-button:hover{background:var(--ana-bg1);color:var(--ana-fg)}
+.ana-header-button[aria-pressed="true"]{border-color:var(--ana-accent);color:var(--ana-accent)}
+.ana-launcher{display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:20px;
+font-family:var(--ana-sans);color:var(--ana-fg)}
+.ana-launch-btn{appearance:none;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;
+border:1px solid var(--ana-accent);border-radius:9px;background:color-mix(in srgb,var(--ana-accent) 12%,transparent);
+color:var(--ana-accent);font:inherit;font-weight:650;cursor:pointer}
+.ana-launch-btn:hover{background:color-mix(in srgb,var(--ana-accent) 22%,transparent)}
+.ana-launch-hint{color:var(--ana-fg2);font-size:12px;max-width:48ch}
 
 /* ── 离线预览页（不在窗口里使用） ──────────────────────────────────────── */
-html[data-evo-preview]{background:#141418}
-html[data-evo-preview] body{margin:0;padding:24px;background:#141418}
-html[data-evo-preview] .evo-preview-frame{max-width:1000px;margin:0 auto 26px;
-border:1px solid var(--evo-line2);border-radius:12px;background:var(--evo-bg);overflow:hidden}
-html[data-evo-preview] .evo-preview-cap{padding:10px 14px;border-bottom:1px solid var(--evo-line);
+html[data-ana-preview]{background:#141418}
+html[data-ana-preview] body{margin:0;padding:24px;background:#141418}
+html[data-ana-preview] .ana-preview-frame{max-width:1000px;margin:0 auto 26px;
+border:1px solid var(--ana-line2);border-radius:12px;background:var(--ana-bg);overflow:hidden}
+html[data-ana-preview] .ana-preview-cap{padding:10px 14px;border-bottom:1px solid var(--ana-line);
 font-weight:650;font-size:13px}
 `

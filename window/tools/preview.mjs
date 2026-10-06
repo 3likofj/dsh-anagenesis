@@ -79,7 +79,7 @@ function parseArgs(argv) {
  * 一段真实形状的日志。截图里能同时看到所有颜色语义，这比看空存储有意义。
  */
 async function makeDemoStore() {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-preview-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-preview-'))
   await mkdir(join(dir, 'journal'), { recursive: true })
   const { createMemory, emptyState } = await import(pathToFileURL(join(root, '..', 'src', 'store', 'schema.js')).href)
   const now = Date.now()
@@ -153,10 +153,10 @@ const timeModel = buildDiagramModel(mirror, { kind: 'strategy-timeline', limit: 
 
 /** 一个视图 = 标题栏 + 工具栏 + 内容 + 页脚（就是窗口里那四段）。 */
 function frame(id, caption, state, body, extraFooter) {
-  return '<div class="evo-preview-frame" id="' + id + '" data-dsh-anagenesis-window="preview">'
+  return '<div class="ana-preview-frame" id="' + id + '" data-dsh-anagenesis-window="preview">'
     + R.renderTitlebarHtml({ title: state.title, subtitle: caption })
     + R.renderToolbarHtml(state)
-    + '<div class="evo-pane">' + body + '</div>'
+    + '<div class="ana-pane">' + body + '</div>'
     + R.renderFooterHtml(state)
     + (extraFooter === undefined ? '' : extraFooter)
     + '</div>'
@@ -164,7 +164,7 @@ function frame(id, caption, state, body, extraFooter) {
 
 /** 单视图页面：截图用。整页截图不会被元素定位/滚动裁掉顶部。 */
 function pageFor(title, inner) {
-  return '<!doctype html><html lang="zh-CN" data-evo-preview><head><meta charset="utf-8">'
+  return '<!doctype html><html lang="zh-CN" data-ana-preview><head><meta charset="utf-8">'
     + '<title>' + R.esc(title) + '</title><style>' + R.ANA_CSS + '</style></head><body>' + inner + '</body></html>'
 }
 
@@ -188,7 +188,7 @@ const frames = [
 ]
 
 const html = pageFor('anagenesis 可视化预览',
-  '<h1 style="max-width:1000px;margin:0 auto 18px;color:#e9e9ec;font:650 18px var(--evo-sans)">'
+  '<h1 style="max-width:1000px;margin:0 auto 18px;color:#e9e9ec;font:650 18px var(--ana-sans)">'
   + 'anagenesis 可视化 —— 离线渲染预览</h1>' + frames.join(''))
 
 mkdirSync(options.out, { recursive: true })

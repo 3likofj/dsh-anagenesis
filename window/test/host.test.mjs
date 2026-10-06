@@ -25,7 +25,7 @@ import { createMemory, emptyState } from '../../src/store/schema.js'
 
 /** A store directory the window can actually read, built by the plugin's own helpers. */
 async function makeStore() {
-  const root = await mkdtemp(join(tmpdir(), 'evo-window-store-'))
+  const root = await mkdtemp(join(tmpdir(), 'ana-window-store-'))
   await mkdir(join(root, 'journal'), { recursive: true })
   const now = Date.UTC(2026, 9, 6, 12, 0, 0)
   const state = emptyState(now)
@@ -270,7 +270,7 @@ test('host: the viz layer resolves through one of the two documented paths', asy
 })
 
 test('host: a missing store is an ANSWER, not an error', async () => {
-  const renderer = createRenderer({ rootDir: join(tmpdir(), 'evo-window-does-not-exist-' + Date.now()) })
+  const renderer = createRenderer({ rootDir: join(tmpdir(), 'ana-window-does-not-exist-' + Date.now()) })
   const frame = await renderer.frame({})
   assert.equal(frame.ok, true)
   assert.equal(frame.empty, true)

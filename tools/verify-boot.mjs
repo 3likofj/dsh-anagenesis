@@ -973,7 +973,7 @@ async function runChecks(paths) {
       `version ${versionBeforeViz} → ${service.store.version}`)
     check('anagenesis-viz: the dashboard is a real frame over the sandbox store',
       String(dashboard.text ?? '').startsWith('╭') && dashboard.storeVersion === versionBeforeViz
-      && String(dashboard.text ?? '').includes('anagenesis dashboard'),
+      && String(dashboard.text ?? '').includes('anagenesis 仪表盘'),
       `width=${dashboard.width} sections=${(dashboard.sections ?? []).join(',')}`)
     check('anagenesis-viz: the diagram carries its own provenance header',
       diagram.artifactVersion === 1 && /anagenesis-viz v1/.test(String(diagram.text ?? ''))
@@ -1174,7 +1174,7 @@ async function main() {
   const legacyBefore = fingerprintTree(realLegacyStore)
   const presetsBefore = fingerprintTree(realPresets)
 
-  const sandboxRoot = join(tmpdir(), 'evo-verify')
+  const sandboxRoot = join(tmpdir(), 'ana-verify')
   mkdirSync(sandboxRoot, { recursive: true })
   const sandbox = await mkdtemp(join(sandboxRoot, 'boot-'))
   assertOutsidePackage(sandbox)

@@ -99,24 +99,24 @@ try {
     const dom = await page.evaluate(() => {
       const win = document.querySelector('[data-dsh-anagenesis-window="window"]')
       const cs = getComputedStyle(win)
-      const cards = win.querySelectorAll('.evo-card')
+      const cards = win.querySelectorAll('.ana-card')
       const cardStyle = cards.length > 0 ? getComputedStyle(cards[0]) : null
-      const svgNodes = win.querySelectorAll('.evo-svg .evo-node-box')
+      const svgNodes = win.querySelectorAll('.ana-svg .ana-node-box')
       return {
         pointerEvents: cs.pointerEvents,
         display: cs.display,
         width: Math.round(win.getBoundingClientRect().width),
         height: Math.round(win.getBoundingClientRect().height),
-        actions: win.querySelectorAll('[data-evo-action]').length,
-        fields: win.querySelectorAll('[data-evo-field]').length,
+        actions: win.querySelectorAll('[data-ana-action]').length,
+        fields: win.querySelectorAll('[data-ana-field]').length,
         selects: win.querySelectorAll('select').length,
         cards: cards.length,
         cardBorder: cardStyle === null ? null : cardStyle.borderTopWidth,
         cardRadius: cardStyle === null ? null : cardStyle.borderTopLeftRadius,
         svgNodes: svgNodes.length,
-        bars: win.querySelectorAll('.evo-pbar').length,
-        paneOverflow: (() => { const p = win.querySelector('.evo-pane'); return p === null ? null : getComputedStyle(p).overflowY })(),
-        tabs: [...win.querySelectorAll('[data-evo-action^="view-"]')].map((b) => b.textContent.trim()),
+        bars: win.querySelectorAll('.ana-pbar').length,
+        paneOverflow: (() => { const p = win.querySelector('.ana-pane'); return p === null ? null : getComputedStyle(p).overflowY })(),
+        tabs: [...win.querySelectorAll('[data-ana-action^="view-"]')].map((b) => b.textContent.trim()),
       }
     })
     say(dom.cards > 0 || dom.svgNodes > 0, 'the window renders content', dom)
@@ -126,25 +126,25 @@ try {
 
     // ── 真的点一下：切到图表面，然后换方向 ────────────────────────────────
     const before = await page.evaluate(() => document.querySelector('[data-dsh-anagenesis-window="window"]').innerHTML.length)
-    const graphTab = await page.$('[data-evo-action="view-graph"]')
+    const graphTab = await page.$('[data-ana-action="view-graph"]')
     if (graphTab !== null) {
       await graphTab.click()
       await new Promise((r) => setTimeout(r, 2500))
       const after = await page.evaluate(() => {
         const win = document.querySelector('[data-dsh-anagenesis-window="window"]')
-        return { svg: win.querySelectorAll('.evo-svg').length, nodes: win.querySelectorAll('.evo-node').length, html: win.innerHTML.length }
+        return { svg: win.querySelectorAll('.ana-svg').length, nodes: win.querySelectorAll('.ana-node').length, html: win.innerHTML.length }
       })
       say(after.svg > 0, 'clicking 「图表」 actually switched the face and drew an SVG', after)
     } else {
       say(false, 'the 「图表」 button was not found')
     }
 
-    const dirSelect = await page.$('[data-evo-field="direction"]')
+    const dirSelect = await page.$('[data-ana-field="direction"]')
     if (dirSelect !== null) {
       await dirSelect.select('TB')
       await new Promise((r) => setTimeout(r, 1200))
       const selected = await page.evaluate(() => {
-        const el = document.querySelector('[data-evo-field="direction"]')
+        const el = document.querySelector('[data-ana-field="direction"]')
         return el === null ? null : el.value
       })
       say(selected === 'TB', 'changing 「方向」 took effect', { value: selected })

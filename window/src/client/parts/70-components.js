@@ -10,7 +10,7 @@
  *     `tools/preview.mjs` 截图里的 DOM —— "我截到的"就是"你看到的"。
  *
  * 交互只挂三个监听在窗口根节点上（事件委托）：`onPointerDown` 拖标题栏、
- * `onClick` 分发 `data-evo-action`、`onChange` 分发 `data-evo-field`。工具栏里的
+ * `onClick` 分发 `data-ana-action`、`onChange` 分发 `data-ana-field`。工具栏里的
  * 每个按钮/下拉框因此不需要各自的回调，也就不会随控件增减而漏接。
  *
  * 注入的内容全部来自本包渲染层，且**每一条 store 文本都过了 `esc()`**：这里注入的
@@ -62,14 +62,14 @@ function AnagenesisLauncher(props) {
     fired.current = true
     engine.open({ reason: props.reason })
   }, [engine, props.autoOpen, props.reason])
-  return createElement('div', { className: 'evo-launcher' },
+  return createElement('div', { className: 'ana-launcher' },
     createElement('button', {
       type: 'button',
-      className: 'evo-launch-btn',
+      className: 'ana-launch-btn',
       'aria-pressed': snap.open === true,
       onClick: () => engine.toggle(props.reason),
     }, createElement(AnagenesisIcon, { size: 15 }), snap.open ? '收起可视化窗口' : '打开可视化窗口'),
-    createElement('div', { className: 'evo-launch-hint' },
+    createElement('div', { className: 'ana-launch-hint' },
       props.hint === undefined
         ? '这是入口，不是第二个界面：仪表盘与图表全部在这个原生窗口里渲染，所有入口打开的是同一个窗口。'
         : props.hint),
@@ -87,7 +87,7 @@ function AnagenesisHeaderButton(props) {
   const label = 'anagenesis 可视化'
   return createElement('button', {
     type: 'button',
-    className: 'evo-header-button',
+    className: 'ana-header-button',
     title: label + '（原生窗口，只读；所有入口打开同一个窗口）',
     'aria-label': label,
     'aria-pressed': snap.open === true,
@@ -125,7 +125,7 @@ function AnagenesisWindow(props) {
    * 工具栏与内容都是 `dangerouslySetInnerHTML` 注入的，React 没有这些节点的 fiber；
    * React 的 `onChange` 是合成事件，只对它自己注册过的表单元素合成 —— 挂在外层 div
    * 上永远不会触发。用户报的"图种 / 方向 / 宽度点不动"就是这个：那三个控件全是
-   * `data-evo-field`（两个 `<select>` 加一个数字 `<input>`）。
+   * `data-ana-field`（两个 `<select>` 加一个数字 `<input>`）。
    */
   useEffect(() => {
     if (snap.open !== true) return undefined
@@ -206,15 +206,15 @@ function AnagenesisWindow(props) {
     role: 'dialog',
     'aria-label': props.title,
   },
-    injectChrome('evo-chrome', renderTitlebarHtml({ title: props.title, subtitle: snap.summary })),
-    injectChrome('evo-chrome', renderToolbarHtml(toolbarState)),
-    createElement('div', { className: 'evo-pane' },
+    injectChrome('ana-chrome', renderTitlebarHtml({ title: props.title, subtitle: snap.summary })),
+    injectChrome('ana-chrome', renderToolbarHtml(toolbarState)),
+    createElement('div', { className: 'ana-pane' },
       snap.html === ''
-        ? createElement('div', { className: 'evo-empty' },
-            createElement('div', { className: 'evo-empty-title' }, snap.busy ? '正在读取存储…' : '还没有数据'),
+        ? createElement('div', { className: 'ana-empty' },
+            createElement('div', { className: 'ana-empty-title' }, snap.busy ? '正在读取存储…' : '还没有数据'),
             createElement('div', null, snap.error === '' ? '首次读取通常在一秒内完成' : snap.error))
         : createElement('div', { dangerouslySetInnerHTML: { __html: snap.html } }),
     ),
-    injectChrome('evo-chrome', renderFooterHtml(footerState)),
+    injectChrome('ana-chrome', renderFooterHtml(footerState)),
   )
 }

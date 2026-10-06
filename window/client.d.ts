@@ -203,7 +203,7 @@ export interface AnagenesisWindowService {
    * (`kind`, `maxNodes`, `width`, `redaction`) re-read the Host.
    */
   setField(field: 'view' | 'kind' | 'direction' | 'zoom' | 'maxNodes' | 'width' | 'redaction' | string, value: string | number): WindowSnapshot
-  /** 工具栏按钮（`data-evo-action` 的值）。 */
+  /** 工具栏按钮（`data-ana-action` 的值）。 */
   dispatch(action: 'view-dashboard' | 'view-graph' | 'zoom-in' | 'zoom-out' | 'zoom-reset' | 'refresh' | 'close' | string): WindowSnapshot
   /** Geometry and face inputs; `view` is accepted here too. */
   patch(patch: Partial<Pick<WindowSnapshot, 'view' | 'kind' | 'direction' | 'zoom' | 'maxNodes' | 'width' | 'redaction' | 'x' | 'y'>>): WindowSnapshot

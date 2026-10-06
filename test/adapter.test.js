@@ -118,7 +118,7 @@ test('adapters: the compaction policy maps host config onto the journal options,
 })
 
 test('adapters: core publishes ctx.anagenesis and the tool row registers the whole ana_* surface', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-adapter-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-adapter-'))
   const host = makeHost()
   try {
     await coreApply(host.ctx, { rootDir: dir, safeMode: false })
@@ -151,7 +151,7 @@ test('adapters: core publishes ctx.anagenesis and the tool row registers the who
 })
 
 test('adapters: a full agent round-trip through the registered tools', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-roundtrip-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-roundtrip-'))
   const host = makeHost()
   try {
     await coreApply(host.ctx, { rootDir: dir })
@@ -281,7 +281,7 @@ test('adapters: a full agent round-trip through the registered tools', async () 
 })
 
 test('adapters: the lifetime counters move with the operations that own them, and a deduplicated write reports no seq', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-stats-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-stats-'))
   const host = makeHost()
   try {
     await coreApply(host.ctx, { rootDir: dir })
@@ -321,7 +321,7 @@ test('adapters: the lifetime counters move with the operations that own them, an
 })
 
 test('adapters: the viz row adds two read-only tools, and withdrawing it leaves the core untouched', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-viz-row-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-viz-row-'))
   const host = makeHost()
   try {
     await coreApply(host.ctx, { rootDir: dir })
@@ -356,7 +356,7 @@ test('adapters: the viz row adds two read-only tools, and withdrawing it leaves 
     }
     const versionBefore = host.services.anagenesis.store.version
     const dashboard = await call('ana_dashboard', { width: 76 }, {})
-    assert.match(dashboard.text, /anagenesis dashboard/)
+    assert.match(dashboard.text, /anagenesis 仪表盘/, 'the frame is terminal-facing and the row defaults to zh')
     assert.equal(dashboard.storeVersion, versionBefore)
     assert.equal(dashboard.auditSeq, 0, 'auditRenders is off by default: a read must not grow the journal')
     assert.equal(dashboard.redaction, 'secrets')
@@ -370,8 +370,8 @@ test('adapters: the viz row adds two read-only tools, and withdrawing it leaves 
 
     // The layer is observable about itself: the viz section reports its own counters.
     const selfView = await call('ana_dashboard', { sections: ['viz'], width: 76 }, {})
-    assert.match(selfView.text, /renders\s+2/, 'the frame reports the render it is producing, not the one before it')
-    assert.match(selfView.text, /diagrams\s+1/)
+    assert.match(selfView.text, /渲染次数\s+2/, 'the frame reports the render it is producing, not the one before it')
+    assert.match(selfView.text, /图表次数\s+1/)
 
     // Rendering is not a transaction, even through the tool boundary.
     assert.equal(host.services.anagenesis.store.version, versionBefore, 'a render must not write to the store')
@@ -386,7 +386,7 @@ test('adapters: the viz row adds two read-only tools, and withdrawing it leaves 
 })
 
 test('adapters: auditRenders is the one opt-in write, and it names the seq it wrote', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-viz-audit-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-viz-audit-'))
   const host = makeHost()
   try {
     await coreApply(host.ctx, { rootDir: dir })
@@ -409,7 +409,7 @@ test('adapters: auditRenders is the one opt-in write, and it names the seq it wr
 })
 
 test('adapters: ana_recall honours a caller token budget even under explore mode', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'evo-budget-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-budget-'))
   const host = makeHost()
   try {
     await coreApply(host.ctx, { rootDir: dir })
@@ -431,7 +431,7 @@ test('adapters: the core row is idempotent — a second mount adopts the existin
   // The bundle mounts the core row globally and the `anagenesis` preset mounts it
   // again in the preset scope; ctx.provide refuses a duplicate name in one
   // isolation scope, so the row must adopt instead of republishing.
-  const dir = await mkdtemp(join(tmpdir(), 'evo-idempotent-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-idempotent-'))
   const host = makeHost()
   try {
     await coreApply(host.ctx, { rootDir: dir })
@@ -455,7 +455,7 @@ test('adapters: every row apply resolves to an effect-legal value', async () => 
   // value collected — any other object throws `TypeError: Invalid effect` and
   // the fibre teardown rolls back everything the body created. An async row that
   // returns a `{ mode }` / `{ dispose }` status object therefore destroys itself.
-  const dir = await mkdtemp(join(tmpdir(), 'evo-contract-'))
+  const dir = await mkdtemp(join(tmpdir(), 'ana-contract-'))
   const host = makeHost()
   try {
     const results = [

@@ -296,6 +296,9 @@ export function createRenderer(options = {}) {
             limit: { events, salience },
             redaction,
             includeBody: cfg.includeBodies,
+            // Same language the terminal surfaces use (`ana_dashboard`): the frame
+            // here and the frame in a tool answer must stay the same bytes.
+            lang: 'zh',
             // Deliberately NO `selfStatus`: the window must be a pure viewer, so the
             // same mirror plus the same options yields the same bytes here as in
             // `ana_dashboard`. The window's own counters live in its footer (a UI

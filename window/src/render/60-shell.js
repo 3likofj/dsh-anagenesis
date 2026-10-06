@@ -2,7 +2,7 @@
  * 窗口骨架（标题栏 / 工具栏 / 页脚 / 事件接线）—— 渲染层第 6 部分。
  *
  * 工具栏是**纯函数产出的 HTML**，理由和内容面板一样：预览里能截到它，验收时看到的
- * 就是窗口里的。交互靠 `data-evo-action` / `data-evo-field` 属性 + 根节点上的事件
+ * 就是窗口里的。交互靠 `data-ana-action` / `data-ana-field` 属性 + 根节点上的事件
  * 委托，所以这里不需要 React，也不需要每个按钮一个回调。
  *
  * **接线必须是原生监听器，不能用 React 的 `onClick` / `onChange` 属性。**
@@ -32,10 +32,10 @@ function wireWindowEvents(node, engine, hooks) {
   const onClick = (event) => {
     const target = event.target
     if (target === undefined || target === null || typeof target.closest !== 'function') return
-    const button = target.closest('[data-evo-action]')
+    const button = target.closest('[data-ana-action]')
     if (button === null) return
     if (typeof event.preventDefault === 'function') event.preventDefault()
-    engine.dispatch(String(button.getAttribute('data-evo-action')))
+    engine.dispatch(String(button.getAttribute('data-ana-action')))
   }
 
   // 原生 `change`：`<select>` 选中即触发；`<input type=number>` 在回车 / 失焦 /
@@ -44,7 +44,7 @@ function wireWindowEvents(node, engine, hooks) {
   const onChange = (event) => {
     const target = event.target
     if (target === undefined || target === null || typeof target.getAttribute !== 'function') return
-    const field = target.getAttribute('data-evo-field')
+    const field = target.getAttribute('data-ana-field')
     if (field === null || field === '') return
     engine.setField(String(field), target.value)
   }
@@ -53,7 +53,7 @@ function wireWindowEvents(node, engine, hooks) {
     if (event.button !== 0) return
     const target = event.target
     if (target === undefined || target === null || typeof target.closest !== 'function') return
-    if (target.closest('.evo-bar.evo-drag') === null) return
+    if (target.closest('.ana-bar.ana-drag') === null) return
     if (target.closest('button,select,input') !== null) return
     if (typeof opts.beginDrag === 'function') opts.beginDrag(event)
   }
@@ -90,8 +90,8 @@ function toolButton(action, label, icon, opts) {
   const options = opts === undefined || opts === null ? {} : opts
   const pressed = options.pressed === true ? ' aria-pressed="true"' : ''
   const extra = options.attrs === undefined ? '' : ' ' + options.attrs
-  return '<button type="button" class="evo-btn' + (options.iconOnly === true ? ' evo-icon' : '') + '"'
-    + ' data-evo-action="' + esc(action) + '"' + pressed + extra
+  return '<button type="button" class="ana-btn' + (options.iconOnly === true ? ' ana-icon' : '') + '"'
+    + ' data-ana-action="' + esc(action) + '"' + pressed + extra
     + ' title="' + esc(options.hint ?? label) + '">' + (icon ?? '') + esc(label) + '</button>'
 }
 
@@ -99,14 +99,14 @@ function toolButton(action, label, icon, opts) {
 function toolSelect(field, label, value, options, hint) {
   const body = options.map((item) => '<option value="' + esc(item.value) + '"'
     + (String(item.value) === String(value) ? ' selected' : '') + '>' + esc(item.label) + '</option>').join('')
-  return '<label class="evo-field" title="' + esc(hint ?? label) + '">' + esc(label)
-    + '<select class="evo-input" data-evo-field="' + esc(field) + '">' + body + '</select></label>'
+  return '<label class="ana-field" title="' + esc(hint ?? label) + '">' + esc(label)
+    + '<select class="ana-input" data-ana-field="' + esc(field) + '">' + body + '</select></label>'
 }
 
 /** 数字输入。 */
 function toolNumber(field, label, value, min, max, hint) {
-  return '<label class="evo-field" title="' + esc(hint ?? label) + '">' + esc(label)
-    + '<input class="evo-input evo-input--w" type="number" data-evo-field="' + esc(field) + '"'
+  return '<label class="ana-field" title="' + esc(hint ?? label) + '">' + esc(label)
+    + '<input class="ana-input ana-input--w" type="number" data-ana-field="' + esc(field) + '"'
     + ' min="' + esc(min) + '" max="' + esc(max) + '" value="' + esc(value) + '"></label>'
 }
 
@@ -116,11 +116,11 @@ function toolNumber(field, label, value, min, max, hint) {
  * @returns {string}
  */
 function viewSwitch(view) {
-  return '<div class="evo-zoom">'
-    + '<button type="button" class="evo-btn" data-evo-action="view-dashboard"'
+  return '<div class="ana-zoom">'
+    + '<button type="button" class="ana-btn" data-ana-action="view-dashboard"'
     + (view === 'dashboard' ? ' aria-pressed="true"' : '') + ' title="看整体状态：规模、生命周期、策略、日志">'
     + ANA_ICON.dashboard + '仪表盘</button>'
-    + '<button type="button" class="evo-btn" data-evo-action="view-graph"'
+    + '<button type="button" class="ana-btn" data-ana-action="view-graph"'
     + (view === 'graph' ? ' aria-pressed="true"' : '') + ' title="看关系与流转：记忆图谱、生命周期、策略时间线">'
     + ANA_ICON.graph + '图表</button>'
     + '</div>'
@@ -133,7 +133,7 @@ function viewSwitch(view) {
  */
 function renderToolbarHtml(state) {
   const view = state.view === 'graph' ? 'graph' : 'dashboard'
-  const parts = [viewSwitch(view), '<span class="evo-sep"></span>']
+  const parts = [viewSwitch(view), '<span class="ana-sep"></span>']
   if (view === 'graph') {
     parts.push(toolSelect('kind', '图种', state.kind, [
       { value: 'memory-graph', label: zhDiagramKind('memory-graph') },
@@ -144,7 +144,7 @@ function renderToolbarHtml(state) {
       { value: 'LR', label: '横向（从左到右）' },
       { value: 'TB', label: '纵向（从上到下）' },
     ], '关系图的排布方向；节点多的时候横向更好读'))
-    parts.push('<span class="evo-zoom">'
+    parts.push('<span class="ana-zoom">'
       + toolButton('zoom-out', '', ANA_ICON.zoomOut, { iconOnly: true, hint: '缩小图表' })
       + toolButton('zoom-reset', Math.round(Number(state.zoom ?? 1) * 100) + '%', null, { hint: '恢复到 100%' })
       + toolButton('zoom-in', '', ANA_ICON.zoomIn, { iconOnly: true, hint: '放大图表' })
@@ -158,10 +158,10 @@ function renderToolbarHtml(state) {
     { value: 'strict', label: zhRedaction('strict') },
     { value: 'none', label: zhRedaction('none') },
   ], zhRedactionHint(state.redaction)))
-  parts.push('<span class="evo-spacer"></span>')
+  parts.push('<span class="ana-spacer"></span>')
   parts.push(toolButton('refresh', '刷新', ANA_ICON.refresh, { hint: '立刻重新读取一次存储' }))
   parts.push(toolButton('close', '关闭', ANA_ICON.close, { hint: '关闭这个窗口（席位保留，入口还在）' }))
-  return '<div class="evo-bar">' + parts.join('') + '</div>'
+  return '<div class="ana-bar">' + parts.join('') + '</div>'
 }
 
 /**
@@ -176,7 +176,7 @@ function renderToolbarHtml(state) {
  * @returns {string}
  */
 function renderTextFallbackHtml(text, note) {
-  return notice(note, 'warn') + '<pre class="evo-text">' + esc(text) + '</pre>'
+  return notice(note, 'warn') + '<pre class="ana-text">' + esc(text) + '</pre>'
 }
 
 /**
@@ -185,11 +185,11 @@ function renderTextFallbackHtml(text, note) {
  * @returns {string}
  */
 function renderTitlebarHtml(opts) {
-  return '<div class="evo-bar evo-drag" data-evo-drag="1">'
-    + '<span class="evo-title">' + esc(opts.title)
-    + (opts.subtitle === undefined || opts.subtitle === '' ? '' : '<span class="evo-sect-hint">　' + esc(opts.subtitle) + '</span>')
+  return '<div class="ana-bar ana-drag" data-ana-drag="1">'
+    + '<span class="ana-title">' + esc(opts.title)
+    + (opts.subtitle === undefined || opts.subtitle === '' ? '' : '<span class="ana-sect-hint">　' + esc(opts.subtitle) + '</span>')
     + '</span>'
-    + '<span class="evo-btn evo-icon" aria-hidden="true" title="按住这里拖动窗口">⠿</span>'
+    + '<span class="ana-btn ana-icon" aria-hidden="true" title="按住这里拖动窗口">⠿</span>'
     + '</div>'
 }
 
@@ -204,12 +204,12 @@ function renderFooterHtml(state) {
   parts.push('<span title="存储版本号；每次写入都会推进">版本 v' + esc(zhCount(state.storeVersion)) + '</span>')
   parts.push('<span title="上一次成功渲染的时间">'
     + esc(Number(state.lastAt) > 0 ? zhAge(Date.now() - Number(state.lastAt)) + '刷新' : '尚未渲染') + '</span>')
-  if (state.busy === true) parts.push('<span class="evo-c-dim">读取中…</span>')
+  if (state.busy === true) parts.push('<span class="ana-c-dim">读取中…</span>')
   if (String(state.degraded ?? '') !== '') {
-    parts.push('<span class="evo-warn-text" title="Host 半还是旧版本，只能给出文本；重启桌面端后恢复图形视图">降级为文本视图</span>')
+    parts.push('<span class="ana-warn-text" title="Host 半还是旧版本，只能给出文本；重启桌面端后恢复图形视图">降级为文本视图</span>')
   }
   const warnings = Array.isArray(state.warnings) ? state.warnings : []
-  if (warnings.length > 0) parts.push('<span class="evo-warn-text" title="' + esc(warnings.join('；')) + '">' + warnings.length + ' 条提示</span>')
-  if (String(state.error ?? '') !== '') parts.push('<span class="evo-error-text" title="' + esc(state.error) + '">读取失败：' + esc(clip(state.error, 60)) + '</span>')
-  return '<div class="evo-foot">' + parts.join('') + '</div>'
+  if (warnings.length > 0) parts.push('<span class="ana-warn-text" title="' + esc(warnings.join('；')) + '">' + warnings.length + ' 条提示</span>')
+  if (String(state.error ?? '') !== '') parts.push('<span class="ana-error-text" title="' + esc(state.error) + '">读取失败：' + esc(clip(state.error, 60)) + '</span>')
+  return '<div class="ana-foot">' + parts.join('') + '</div>'
 }

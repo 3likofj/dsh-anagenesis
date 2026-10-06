@@ -442,17 +442,17 @@ function zhAgeToken(text) {
 
 /** 语义色名 → CSS 变量。`dim` 是"降低视觉权重"，不是"不可用"。 */
 const ANA_VAR = Object.freeze({
-  ok: 'var(--evo-ok)',
-  okBright: 'var(--evo-ok-bright)',
-  warn: 'var(--evo-warn)',
-  bad: 'var(--evo-bad)',
-  info: 'var(--evo-info)',
-  violet: 'var(--evo-violet)',
-  indigo: 'var(--evo-indigo)',
-  teal: 'var(--evo-teal)',
-  accent: 'var(--evo-accent)',
-  dim: 'var(--evo-dim)',
-  plain: 'var(--evo-fg)',
+  ok: 'var(--ana-ok)',
+  okBright: 'var(--ana-ok-bright)',
+  warn: 'var(--ana-warn)',
+  bad: 'var(--ana-bad)',
+  info: 'var(--ana-info)',
+  violet: 'var(--ana-violet)',
+  indigo: 'var(--ana-indigo)',
+  teal: 'var(--ana-teal)',
+  accent: 'var(--ana-accent)',
+  dim: 'var(--ana-dim)',
+  plain: 'var(--ana-fg)',
 })
 
 /** 模型里的 `tone`（`src/viz/model.js` 产出）→ 语义色。 */
@@ -563,221 +563,221 @@ function evoColor(name) {
  * 一个没有本窗口的页面里匹配零个元素；卸载时只删掉自己那一个 `<style>` 节点。
  */
 const ANA_CSS = `
-[data-dsh-anagenesis-window]{--evo-ok:var(--dsw-alias-state-success-primary,#3fb950);
---evo-ok-bright:#2fd07a;--evo-warn:var(--dsw-alias-state-warn-primary,#d9a03a);
---evo-bad:var(--dsw-alias-state-error-primary,#e0554e);
---evo-info:#5aa9e6;--evo-violet:#a97bff;--evo-indigo:#6b7cff;--evo-teal:#3fbfae;
---evo-accent:var(--dsw-alias-brand-primary,#4d6bfe);
---evo-dim:var(--dsw-alias-state-idle-primary,#8b8b93);
---evo-fg:var(--dsw-alias-label-primary,#e9e9ec);
---evo-fg2:var(--dsw-alias-label-secondary,#b6b6bd);
---evo-line:var(--dsw-alias-border-l1,rgba(127,127,127,.24));
---evo-line2:var(--dsw-alias-border-l2,rgba(127,127,127,.38));
---evo-bg:var(--dsw-alias-bg-overlay,#1c1c20);
---evo-bg2:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.08));
---evo-bg1:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.16));
---evo-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Microsoft YaHei",monospace;
---evo-sans:system-ui,-apple-system,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
-box-sizing:border-box;color:var(--evo-fg);font-family:var(--evo-sans);font-size:13px;line-height:1.6}
+[data-dsh-anagenesis-window]{--ana-ok:var(--dsw-alias-state-success-primary,#3fb950);
+--ana-ok-bright:#2fd07a;--ana-warn:var(--dsw-alias-state-warn-primary,#d9a03a);
+--ana-bad:var(--dsw-alias-state-error-primary,#e0554e);
+--ana-info:#5aa9e6;--ana-violet:#a97bff;--ana-indigo:#6b7cff;--ana-teal:#3fbfae;
+--ana-accent:var(--dsw-alias-brand-primary,#4d6bfe);
+--ana-dim:var(--dsw-alias-state-idle-primary,#8b8b93);
+--ana-fg:var(--dsw-alias-label-primary,#e9e9ec);
+--ana-fg2:var(--dsw-alias-label-secondary,#b6b6bd);
+--ana-line:var(--dsw-alias-border-l1,rgba(127,127,127,.24));
+--ana-line2:var(--dsw-alias-border-l2,rgba(127,127,127,.38));
+--ana-bg:var(--dsw-alias-bg-overlay,#1c1c20);
+--ana-bg2:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.08));
+--ana-bg1:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.16));
+--ana-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Microsoft YaHei",monospace;
+--ana-sans:system-ui,-apple-system,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+box-sizing:border-box;color:var(--ana-fg);font-family:var(--ana-sans);font-size:13px;line-height:1.6}
 [data-dsh-anagenesis-window] *{box-sizing:border-box}
 /* React 注入 HTML 必须有一个宿主节点（dangerouslySetInnerHTML），而那个节点不该
    参与布局：display:contents 让里面的标题栏/工具栏/页脚直接成为窗口的 flex 子项。 */
-.evo-chrome{display:contents}
+.ana-chrome{display:contents}
 
 /* ── 窗口外壳 ───────────────────────────────────────────────────────────── */
 [data-dsh-anagenesis-window="window"]{position:fixed;z-index:60;display:flex;flex-direction:column;
 pointer-events:auto;width:min(880px,94vw);height:min(640px,82vh);min-width:460px;min-height:280px;
-overflow:hidden;resize:both;border:1px solid var(--evo-line2);border-radius:12px;background:var(--evo-bg);
+overflow:hidden;resize:both;border:1px solid var(--ana-line2);border-radius:12px;background:var(--ana-bg);
 box-shadow:0 20px 64px rgba(0,0,0,.44)}
 /* 工具栏在两行里放得下就绝不裁切：overflow-x:auto 会把「关闭」推到看不见的地方，
-   而一个看不见的关闭按钮比一个两行高的工具栏糟得多。控件本身不换行（见 .evo-field）。 */
-.evo-bar{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:wrap;row-gap:6px;
-padding:8px 10px;border-bottom:1px solid var(--evo-line);background:var(--evo-bg2)}
-[data-dsh-anagenesis-window="window"] .evo-bar.evo-drag{cursor:grab;user-select:none}
-[data-dsh-anagenesis-window="window"] .evo-bar.evo-drag:active{cursor:grabbing}
-.evo-title{flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:650;font-size:13px}
-.evo-bar .evo-spacer{flex:1 1 auto}
-.evo-btn{appearance:none;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;
+   而一个看不见的关闭按钮比一个两行高的工具栏糟得多。控件本身不换行（见 .ana-field）。 */
+.ana-bar{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:wrap;row-gap:6px;
+padding:8px 10px;border-bottom:1px solid var(--ana-line);background:var(--ana-bg2)}
+[data-dsh-anagenesis-window="window"] .ana-bar.ana-drag{cursor:grab;user-select:none}
+[data-dsh-anagenesis-window="window"] .ana-bar.ana-drag:active{cursor:grabbing}
+.ana-title{flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:650;font-size:13px}
+.ana-bar .ana-spacer{flex:1 1 auto}
+.ana-btn{appearance:none;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;
 flex:0 0 auto;
-border:1px solid var(--evo-line);border-radius:7px;background:transparent;color:var(--evo-fg2);
+border:1px solid var(--ana-line);border-radius:7px;background:transparent;color:var(--ana-fg2);
 font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
-.evo-btn:hover{background:var(--evo-bg1);color:var(--evo-fg)}
-.evo-btn[aria-pressed="true"]{border-color:var(--evo-accent);color:var(--evo-accent);background:color-mix(in srgb,var(--evo-accent) 12%,transparent)}
-.evo-btn.evo-icon{padding:0 7px;font-size:13px}
+.ana-btn:hover{background:var(--ana-bg1);color:var(--ana-fg)}
+.ana-btn[aria-pressed="true"]{border-color:var(--ana-accent);color:var(--ana-accent);background:color-mix(in srgb,var(--ana-accent) 12%,transparent)}
+.ana-btn.ana-icon{padding:0 7px;font-size:13px}
 /* 控件标签绝不换行：第一版截图里「节点上限」被挤成两行，是这个 flex 容器收缩导致的。 */
-.evo-field{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;white-space:nowrap;
-font-size:12px;color:var(--evo-fg2)}
-.evo-input{height:26px;border:1px solid var(--evo-line);border-radius:7px;background:transparent;
-color:var(--evo-fg);font:inherit;font-size:12px;padding:0 6px}
-.evo-input--w{width:60px}
-.evo-sep{width:1px;height:18px;background:var(--evo-line);margin:0 2px}
-.evo-foot{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:6px 10px;
-border-top:1px solid var(--evo-line);font-size:11.5px;color:var(--evo-fg2)}
-.evo-warn-text{color:var(--evo-warn)}
-.evo-error-text{color:var(--evo-bad)}
-.evo-ok-text{color:var(--evo-ok)}
+.ana-field{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;white-space:nowrap;
+font-size:12px;color:var(--ana-fg2)}
+.ana-input{height:26px;border:1px solid var(--ana-line);border-radius:7px;background:transparent;
+color:var(--ana-fg);font:inherit;font-size:12px;padding:0 6px}
+.ana-input--w{width:60px}
+.ana-sep{width:1px;height:18px;background:var(--ana-line);margin:0 2px}
+.ana-foot{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:6px 10px;
+border-top:1px solid var(--ana-line);font-size:11.5px;color:var(--ana-fg2)}
+.ana-warn-text{color:var(--ana-warn)}
+.ana-error-text{color:var(--ana-bad)}
+.ana-ok-text{color:var(--ana-ok)}
 
 /* ── 内容容器（窗口与预览共用） ─────────────────────────────────────────── */
-.evo-pane{flex:1 1 auto;min-height:0;overflow:auto;padding:12px}
-.evo-pane--flush{padding:0}
+.ana-pane{flex:1 1 auto;min-height:0;overflow:auto;padding:12px}
+.ana-pane--flush{padding:0}
 
 /* ── 关键指标卡 ─────────────────────────────────────────────────────────── */
-.evo-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-bottom:12px}
-.evo-card{position:relative;padding:10px 12px;border:1px solid var(--evo-line);border-radius:10px;
-background:var(--evo-bg2);overflow:hidden}
-.evo-card::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--evo-dim);opacity:.9}
-.evo-card--ok::before{background:var(--evo-ok)}
-.evo-card--warn::before{background:var(--evo-warn)}
-.evo-card--bad::before{background:var(--evo-bad)}
-.evo-card--accent::before{background:var(--evo-accent)}
-.evo-card--plain::before{background:var(--evo-dim)}
-.evo-card-label{font-size:11.5px;color:var(--evo-fg2);letter-spacing:.02em}
-.evo-card-value{font-size:23px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums}
-.evo-card-value small{font-size:12px;font-weight:500;color:var(--evo-fg2);margin-left:5px}
-.evo-card--bad .evo-card-value{color:var(--evo-bad)}
-.evo-card--warn .evo-card-value{color:var(--evo-warn)}
-.evo-card--ok .evo-card-value{color:var(--evo-ok)}
-.evo-card-sub{font-size:11.5px;color:var(--evo-fg2)}
-.evo-card--hot{border-color:var(--evo-bad);background:color-mix(in srgb,var(--evo-bad) 10%,transparent)}
+.ana-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-bottom:12px}
+.ana-card{position:relative;padding:10px 12px;border:1px solid var(--ana-line);border-radius:10px;
+background:var(--ana-bg2);overflow:hidden}
+.ana-card::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--ana-dim);opacity:.9}
+.ana-card--ok::before{background:var(--ana-ok)}
+.ana-card--warn::before{background:var(--ana-warn)}
+.ana-card--bad::before{background:var(--ana-bad)}
+.ana-card--accent::before{background:var(--ana-accent)}
+.ana-card--plain::before{background:var(--ana-dim)}
+.ana-card-label{font-size:11.5px;color:var(--ana-fg2);letter-spacing:.02em}
+.ana-card-value{font-size:23px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums}
+.ana-card-value small{font-size:12px;font-weight:500;color:var(--ana-fg2);margin-left:5px}
+.ana-card--bad .ana-card-value{color:var(--ana-bad)}
+.ana-card--warn .ana-card-value{color:var(--ana-warn)}
+.ana-card--ok .ana-card-value{color:var(--ana-ok)}
+.ana-card-sub{font-size:11.5px;color:var(--ana-fg2)}
+.ana-card--hot{border-color:var(--ana-bad);background:color-mix(in srgb,var(--ana-bad) 10%,transparent)}
 
 /* ── 分区卡片 ───────────────────────────────────────────────────────────── */
-.evo-sect{margin-bottom:12px;border:1px solid var(--evo-line);border-radius:10px;background:var(--evo-bg2);overflow:hidden}
-.evo-sect-head{display:flex;align-items:baseline;gap:8px;padding:8px 12px;border-bottom:1px solid var(--evo-line)}
-.evo-sect-title{font-weight:650;font-size:13px}
-.evo-sect-hint{font-size:11.5px;color:var(--evo-fg2)}
-.evo-sect-body{padding:6px 12px 10px}
+.ana-sect{margin-bottom:12px;border:1px solid var(--ana-line);border-radius:10px;background:var(--ana-bg2);overflow:hidden}
+.ana-sect-head{display:flex;align-items:baseline;gap:8px;padding:8px 12px;border-bottom:1px solid var(--ana-line)}
+.ana-sect-title{font-weight:650;font-size:13px}
+.ana-sect-hint{font-size:11.5px;color:var(--ana-fg2)}
+.ana-sect-body{padding:6px 12px 10px}
 
 /* ── 行 ─────────────────────────────────────────────────────────────────── */
-.evo-row{display:grid;grid-template-columns:minmax(96px,34%) 1fr auto;align-items:center;gap:10px;
-padding:5px 0;border-bottom:1px dashed color-mix(in srgb,var(--evo-line) 70%,transparent)}
-.evo-row:last-child{border-bottom:0}
-.evo-row-label{color:var(--evo-fg2);overflow-wrap:anywhere}
-.evo-row-value{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.evo-row-note{grid-column:1 / -1;font-size:11.5px;color:var(--evo-fg2);font-family:var(--evo-mono)}
-.evo-tone-accent .evo-row-value{color:var(--evo-accent);font-weight:600}
-.evo-tone-ok .evo-row-value{color:var(--evo-ok);font-weight:600}
-.evo-tone-warn .evo-row-value{color:var(--evo-warn);font-weight:600}
-.evo-tone-bad .evo-row-value{color:var(--evo-bad);font-weight:700}
-.evo-tone-plain .evo-row-value{color:var(--evo-fg)}
-.evo-tone-dim{opacity:.62}
-.evo-em{color:var(--evo-fg);font-weight:650}
+.ana-row{display:grid;grid-template-columns:minmax(96px,34%) 1fr auto;align-items:center;gap:10px;
+padding:5px 0;border-bottom:1px dashed color-mix(in srgb,var(--ana-line) 70%,transparent)}
+.ana-row:last-child{border-bottom:0}
+.ana-row-label{color:var(--ana-fg2);overflow-wrap:anywhere}
+.ana-row-value{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.ana-row-note{grid-column:1 / -1;font-size:11.5px;color:var(--ana-fg2);font-family:var(--ana-mono)}
+.ana-tone-accent .ana-row-value{color:var(--ana-accent);font-weight:600}
+.ana-tone-ok .ana-row-value{color:var(--ana-ok);font-weight:600}
+.ana-tone-warn .ana-row-value{color:var(--ana-warn);font-weight:600}
+.ana-tone-bad .ana-row-value{color:var(--ana-bad);font-weight:700}
+.ana-tone-plain .ana-row-value{color:var(--ana-fg)}
+.ana-tone-dim{opacity:.62}
+.ana-em{color:var(--ana-fg);font-weight:650}
 
 /* ── 进度条（渐变 + 鲜明色块） ────────────────────────────────────────────
-   类名是 .evo-pbar* 而不是 .evo-bar*：.evo-bar 已经是窗口与预览的**工具栏**，
+   类名是 .ana-pbar* 而不是 .ana-bar*：.ana-bar 已经是窗口与预览的**工具栏**，
    两者撞名时后一条规则的 height:18px/overflow:hidden 会把工具栏压成一条线 ——
    这个 bug 在截图里表现为"工具栏被裁掉"，实际是选择器互相覆盖。 */
-.evo-pbar{position:relative;height:18px;border-radius:5px;background:color-mix(in srgb,var(--evo-dim) 18%,transparent);
+.ana-pbar{position:relative;height:18px;border-radius:5px;background:color-mix(in srgb,var(--ana-dim) 18%,transparent);
 overflow:hidden;min-width:80px}
-.evo-pbar-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,color-mix(in srgb,var(--evo-c) 55%,transparent),var(--evo-c))}
-.evo-pbar--ok{--evo-c:var(--evo-ok)}
-.evo-pbar--warn{--evo-c:var(--evo-warn)}
-.evo-pbar--bad{--evo-c:var(--evo-bad)}
-.evo-pbar--accent{--evo-c:var(--evo-accent)}
-.evo-pbar--info{--evo-c:var(--evo-info)}
-.evo-pbar--violet{--evo-c:var(--evo-violet)}
-.evo-pbar--indigo{--evo-c:var(--evo-indigo)}
-.evo-pbar--teal{--evo-c:var(--evo-teal)}
-.evo-pbar--dim{--evo-c:var(--evo-dim)}
-.evo-pbar--plain{--evo-c:var(--evo-fg2)}
-.evo-pbar-cell{display:grid;grid-template-columns:minmax(96px,34%) 1fr 62px;align-items:center;gap:10px;padding:5px 0}
-.evo-num{text-align:right;font-variant-numeric:tabular-nums;color:var(--evo-fg2)}
-.evo-pbar-pct{opacity:.75}
+.ana-pbar-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,color-mix(in srgb,var(--ana-c) 55%,transparent),var(--ana-c))}
+.ana-pbar--ok{--ana-c:var(--ana-ok)}
+.ana-pbar--warn{--ana-c:var(--ana-warn)}
+.ana-pbar--bad{--ana-c:var(--ana-bad)}
+.ana-pbar--accent{--ana-c:var(--ana-accent)}
+.ana-pbar--info{--ana-c:var(--ana-info)}
+.ana-pbar--violet{--ana-c:var(--ana-violet)}
+.ana-pbar--indigo{--ana-c:var(--ana-indigo)}
+.ana-pbar--teal{--ana-c:var(--ana-teal)}
+.ana-pbar--dim{--ana-c:var(--ana-dim)}
+.ana-pbar--plain{--ana-c:var(--ana-fg2)}
+.ana-pbar-cell{display:grid;grid-template-columns:minmax(96px,34%) 1fr 62px;align-items:center;gap:10px;padding:5px 0}
+.ana-num{text-align:right;font-variant-numeric:tabular-nums;color:var(--ana-fg2)}
+.ana-pbar-pct{opacity:.75}
 
 /* ── 徽标 / 色块 ────────────────────────────────────────────────────────── */
-.evo-chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;
+.ana-chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;
 border:1px solid currentColor;font-size:11.5px;line-height:1;white-space:nowrap}
-.evo-chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
-.evo-c-ok{color:var(--evo-ok)}.evo-c-okBright{color:var(--evo-ok-bright)}
-.evo-c-warn{color:var(--evo-warn)}.evo-c-bad{color:var(--evo-bad)}
-.evo-c-info{color:var(--evo-info)}.evo-c-violet{color:var(--evo-violet)}
-.evo-c-indigo{color:var(--evo-indigo)}.evo-c-teal{color:var(--evo-teal)}
-.evo-c-accent{color:var(--evo-accent)}.evo-c-dim{color:var(--evo-dim)}.evo-c-plain{color:var(--evo-fg)}
-.evo-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.evo-arrow{color:var(--evo-fg2);padding:0 2px}
+.ana-chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.ana-c-ok{color:var(--ana-ok)}.ana-c-okBright{color:var(--ana-ok-bright)}
+.ana-c-warn{color:var(--ana-warn)}.ana-c-bad{color:var(--ana-bad)}
+.ana-c-info{color:var(--ana-info)}.ana-c-violet{color:var(--ana-violet)}
+.ana-c-indigo{color:var(--ana-indigo)}.ana-c-teal{color:var(--ana-teal)}
+.ana-c-accent{color:var(--ana-accent)}.ana-c-dim{color:var(--ana-dim)}.ana-c-plain{color:var(--ana-fg)}
+.ana-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ana-arrow{color:var(--ana-fg2);padding:0 2px}
 
 /* ── 排行 ───────────────────────────────────────────────────────────────── */
-.evo-rank{display:grid;grid-template-columns:22px 1fr auto;gap:9px;align-items:start;padding:7px 0;
-border-bottom:1px dashed color-mix(in srgb,var(--evo-line) 70%,transparent)}
-.evo-rank:last-child{border-bottom:0}
-.evo-rank-no{color:var(--evo-fg2);font-variant-numeric:tabular-nums;text-align:right;font-size:12px}
-.evo-rank-main{min-width:0}
-.evo-rank-subject{overflow-wrap:anywhere}
-.evo-rank-body{font-size:11.5px;color:var(--evo-fg2);overflow-wrap:anywhere}
-.evo-rank-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
-.evo-meter{width:74px;height:6px;border-radius:3px;background:color-mix(in srgb,var(--evo-dim) 20%,transparent)}
-.evo-meter-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,color-mix(in srgb,var(--evo-accent) 45%,transparent),var(--evo-accent))}
+.ana-rank{display:grid;grid-template-columns:22px 1fr auto;gap:9px;align-items:start;padding:7px 0;
+border-bottom:1px dashed color-mix(in srgb,var(--ana-line) 70%,transparent)}
+.ana-rank:last-child{border-bottom:0}
+.ana-rank-no{color:var(--ana-fg2);font-variant-numeric:tabular-nums;text-align:right;font-size:12px}
+.ana-rank-main{min-width:0}
+.ana-rank-subject{overflow-wrap:anywhere}
+.ana-rank-body{font-size:11.5px;color:var(--ana-fg2);overflow-wrap:anywhere}
+.ana-rank-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.ana-meter{width:74px;height:6px;border-radius:3px;background:color-mix(in srgb,var(--ana-dim) 20%,transparent)}
+.ana-meter-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,color-mix(in srgb,var(--ana-accent) 45%,transparent),var(--ana-accent))}
 
 /* ── 图表 ───────────────────────────────────────────────────────────────── */
-.evo-graph{position:relative;width:100%;min-height:240px;overflow:auto;
-background:radial-gradient(circle at 1px 1px,color-mix(in srgb,var(--evo-dim) 26%,transparent) 1px,transparent 0)
+.ana-graph{position:relative;width:100%;min-height:240px;overflow:auto;
+background:radial-gradient(circle at 1px 1px,color-mix(in srgb,var(--ana-dim) 26%,transparent) 1px,transparent 0)
 0 0/18px 18px}
-.evo-graph-inner{transform-origin:0 0}
-.evo-svg{display:block}
-.evo-svg .evo-edge{fill:none;stroke-width:1.6}
-.evo-svg .evo-edge--dangling{stroke-dasharray:5 4;opacity:.75}
-.evo-svg .evo-elabel{font-size:10.5px;font-family:var(--evo-sans)}
-.evo-svg .evo-elabel-bg{fill:var(--evo-bg);fill-opacity:.88;stroke:none}
-.evo-svg .evo-node-box{stroke-width:1.6;rx:9}
-.evo-svg .evo-node-label{font-size:12px;font-family:var(--evo-sans);fill:var(--evo-fg)}
-.evo-svg .evo-node-sub{font-size:10px;font-family:var(--evo-sans);fill:var(--evo-fg2)}
-.evo-svg .evo-node{cursor:default}
-.evo-svg .evo-node:hover .evo-node-box{filter:brightness(1.22)}
-.evo-svg .evo-dot{stroke:none}
-.evo-zoom{display:inline-flex;gap:4px;align-items:center}
+.ana-graph-inner{transform-origin:0 0}
+.ana-svg{display:block}
+.ana-svg .ana-edge{fill:none;stroke-width:1.6}
+.ana-svg .ana-edge--dangling{stroke-dasharray:5 4;opacity:.75}
+.ana-svg .ana-elabel{font-size:10.5px;font-family:var(--ana-sans)}
+.ana-svg .ana-elabel-bg{fill:var(--ana-bg);fill-opacity:.88;stroke:none}
+.ana-svg .ana-node-box{stroke-width:1.6;rx:9}
+.ana-svg .ana-node-label{font-size:12px;font-family:var(--ana-sans);fill:var(--ana-fg)}
+.ana-svg .ana-node-sub{font-size:10px;font-family:var(--ana-sans);fill:var(--ana-fg2)}
+.ana-svg .ana-node{cursor:default}
+.ana-svg .ana-node:hover .ana-node-box{filter:brightness(1.22)}
+.ana-svg .ana-dot{stroke:none}
+.ana-zoom{display:inline-flex;gap:4px;align-items:center}
 
 /* ── 图例 ───────────────────────────────────────────────────────────────── */
-.evo-legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 12px;border-top:1px solid var(--evo-line);
-font-size:11.5px;color:var(--evo-fg2);align-items:center}
-.evo-legend-item{display:inline-flex;align-items:center;gap:5px}
-.evo-legend-swatch{width:10px;height:10px;border-radius:3px;background:currentColor;flex:0 0 auto}
-.evo-legend-title{font-weight:600;color:var(--evo-fg)}
+.ana-legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 12px;border-top:1px solid var(--ana-line);
+font-size:11.5px;color:var(--ana-fg2);align-items:center}
+.ana-legend-item{display:inline-flex;align-items:center;gap:5px}
+.ana-legend-swatch{width:10px;height:10px;border-radius:3px;background:currentColor;flex:0 0 auto}
+.ana-legend-title{font-weight:600;color:var(--ana-fg)}
 
 /* ── 时间线 ─────────────────────────────────────────────────────────────── */
-.evo-tl{position:relative;padding:4px 0 4px 4px}
-.evo-tl::before{content:"";position:absolute;left:15px;top:8px;bottom:8px;width:2px;
-background:linear-gradient(180deg,var(--evo-accent),var(--evo-line))}
-.evo-tl-item{position:relative;display:grid;grid-template-columns:26px 1fr;gap:12px;padding:7px 0 7px 0}
-.evo-tl-dot{position:relative;z-index:1;width:12px;height:12px;margin:5px auto 0;border-radius:50%;
-background:var(--evo-c,var(--evo-dim));box-shadow:0 0 0 3px var(--evo-bg)}
-.evo-tl-main{min-width:0}
-.evo-tl-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.evo-tl-type{font-weight:650;color:var(--evo-c,var(--evo-fg))}
-.evo-tl-meta{font-size:11.5px;color:var(--evo-fg2);font-variant-numeric:tabular-nums}
-.evo-tl-detail{font-size:12px;color:var(--evo-fg2);font-family:var(--evo-mono);overflow-wrap:anywhere}
+.ana-tl{position:relative;padding:4px 0 4px 4px}
+.ana-tl::before{content:"";position:absolute;left:15px;top:8px;bottom:8px;width:2px;
+background:linear-gradient(180deg,var(--ana-accent),var(--ana-line))}
+.ana-tl-item{position:relative;display:grid;grid-template-columns:26px 1fr;gap:12px;padding:7px 0 7px 0}
+.ana-tl-dot{position:relative;z-index:1;width:12px;height:12px;margin:5px auto 0;border-radius:50%;
+background:var(--ana-c,var(--ana-dim));box-shadow:0 0 0 3px var(--ana-bg)}
+.ana-tl-main{min-width:0}
+.ana-tl-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ana-tl-type{font-weight:650;color:var(--ana-c,var(--ana-fg))}
+.ana-tl-meta{font-size:11.5px;color:var(--ana-fg2);font-variant-numeric:tabular-nums}
+.ana-tl-detail{font-size:12px;color:var(--ana-fg2);font-family:var(--ana-mono);overflow-wrap:anywhere}
 
 /* ── 空态 / 提示 ────────────────────────────────────────────────────────── */
-.evo-text{font-family:var(--evo-mono);font-size:12px;line-height:1.5;white-space:pre;overflow:auto;margin:0;
-color:var(--evo-fg)}
-.evo-empty{padding:26px 18px;text-align:center;color:var(--evo-fg2)}
-.evo-empty-title{font-size:14px;font-weight:650;color:var(--evo-fg);margin-bottom:6px}
-.evo-notice{display:flex;gap:8px;align-items:flex-start;padding:8px 12px;border-radius:8px;
-background:color-mix(in srgb,var(--evo-warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--evo-warn) 40%,transparent);
-color:var(--evo-fg);font-size:12px;margin-bottom:10px}
-.evo-notice--bad{background:color-mix(in srgb,var(--evo-bad) 12%,transparent);
-border-color:color-mix(in srgb,var(--evo-bad) 42%,transparent)}
-.evo-notice--info{background:color-mix(in srgb,var(--evo-info) 12%,transparent);
-border-color:color-mix(in srgb,var(--evo-info) 40%,transparent)}
+.ana-text{font-family:var(--ana-mono);font-size:12px;line-height:1.5;white-space:pre;overflow:auto;margin:0;
+color:var(--ana-fg)}
+.ana-empty{padding:26px 18px;text-align:center;color:var(--ana-fg2)}
+.ana-empty-title{font-size:14px;font-weight:650;color:var(--ana-fg);margin-bottom:6px}
+.ana-notice{display:flex;gap:8px;align-items:flex-start;padding:8px 12px;border-radius:8px;
+background:color-mix(in srgb,var(--ana-warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--ana-warn) 40%,transparent);
+color:var(--ana-fg);font-size:12px;margin-bottom:10px}
+.ana-notice--bad{background:color-mix(in srgb,var(--ana-bad) 12%,transparent);
+border-color:color-mix(in srgb,var(--ana-bad) 42%,transparent)}
+.ana-notice--info{background:color-mix(in srgb,var(--ana-info) 12%,transparent);
+border-color:color-mix(in srgb,var(--ana-info) 40%,transparent)}
 
 /* ── 入口按钮（顶部栏 / 侧栏） ──────────────────────────────────────────── */
-.evo-header-button{appearance:none;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;
-border:1px solid var(--evo-line);border-radius:7px;background:transparent;color:var(--evo-fg2);
-font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;font-family:var(--evo-sans)}
-.evo-header-button:hover{background:var(--evo-bg1);color:var(--evo-fg)}
-.evo-header-button[aria-pressed="true"]{border-color:var(--evo-accent);color:var(--evo-accent)}
-.evo-launcher{display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:20px;
-font-family:var(--evo-sans);color:var(--evo-fg)}
-.evo-launch-btn{appearance:none;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;
-border:1px solid var(--evo-accent);border-radius:9px;background:color-mix(in srgb,var(--evo-accent) 12%,transparent);
-color:var(--evo-accent);font:inherit;font-weight:650;cursor:pointer}
-.evo-launch-btn:hover{background:color-mix(in srgb,var(--evo-accent) 22%,transparent)}
-.evo-launch-hint{color:var(--evo-fg2);font-size:12px;max-width:48ch}
+.ana-header-button{appearance:none;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;
+border:1px solid var(--ana-line);border-radius:7px;background:transparent;color:var(--ana-fg2);
+font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;font-family:var(--ana-sans)}
+.ana-header-button:hover{background:var(--ana-bg1);color:var(--ana-fg)}
+.ana-header-button[aria-pressed="true"]{border-color:var(--ana-accent);color:var(--ana-accent)}
+.ana-launcher{display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:20px;
+font-family:var(--ana-sans);color:var(--ana-fg)}
+.ana-launch-btn{appearance:none;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;
+border:1px solid var(--ana-accent);border-radius:9px;background:color-mix(in srgb,var(--ana-accent) 12%,transparent);
+color:var(--ana-accent);font:inherit;font-weight:650;cursor:pointer}
+.ana-launch-btn:hover{background:color-mix(in srgb,var(--ana-accent) 22%,transparent)}
+.ana-launch-hint{color:var(--ana-fg2);font-size:12px;max-width:48ch}
 
 /* ── 离线预览页（不在窗口里使用） ──────────────────────────────────────── */
-html[data-evo-preview]{background:#141418}
-html[data-evo-preview] body{margin:0;padding:24px;background:#141418}
-html[data-evo-preview] .evo-preview-frame{max-width:1000px;margin:0 auto 26px;
-border:1px solid var(--evo-line2);border-radius:12px;background:var(--evo-bg);overflow:hidden}
-html[data-evo-preview] .evo-preview-cap{padding:10px 14px;border-bottom:1px solid var(--evo-line);
+html[data-ana-preview]{background:#141418}
+html[data-ana-preview] body{margin:0;padding:24px;background:#141418}
+html[data-ana-preview] .ana-preview-frame{max-width:1000px;margin:0 auto 26px;
+border:1px solid var(--ana-line2);border-radius:12px;background:var(--ana-bg);overflow:hidden}
+html[data-ana-preview] .ana-preview-cap{padding:10px 14px;border-bottom:1px solid var(--ana-line);
 font-weight:650;font-size:13px}
 `
 
@@ -849,12 +849,12 @@ function tag(tagName, attributes, inner) {
  */
 function chip(color, text, hint) {
   const title = hint === undefined || hint === '' ? text : text + ' —— ' + hint
-  return '<span class="evo-chip evo-c-' + esc(color) + '" title="' + esc(title) + '">' + esc(text) + '</span>'
+  return '<span class="ana-chip ana-c-' + esc(color) + '" title="' + esc(title) + '">' + esc(text) + '</span>'
 }
 
 /** 无圆点的纯色标签。 */
 function dot(color, hint) {
-  return '<span class="evo-legend-swatch evo-c-' + esc(color) + '" title="' + esc(hint ?? '') + '"></span>'
+  return '<span class="ana-legend-swatch ana-c-' + esc(color) + '" title="' + esc(hint ?? '') + '"></span>'
 }
 
 /**
@@ -866,11 +866,11 @@ function row(row) {
   const color = row.color === undefined ? 'plain' : row.color
   const hint = row.hint === undefined ? '' : row.hint
   const title = hint === '' ? '' : ' title="' + esc(hint) + '"'
-  let out = '<div class="evo-row evo-tone-' + esc(color) + '">'
-    + '<div class="evo-row-label"' + title + '>' + esc(row.label) + '</div>'
-    + '<div class="evo-row-value">' + esc(row.value) + '</div>'
+  let out = '<div class="ana-row ana-tone-' + esc(color) + '">'
+    + '<div class="ana-row-label"' + title + '>' + esc(row.label) + '</div>'
+    + '<div class="ana-row-value">' + esc(row.value) + '</div>'
     + '<div></div>'
-  if (row.note !== undefined && row.note !== '') out += '<div class="evo-row-note">' + esc(row.note) + '</div>'
+  if (row.note !== undefined && row.note !== '') out += '<div class="ana-row-note">' + esc(row.note) + '</div>'
   return out + '</div>'
 }
 
@@ -882,10 +882,10 @@ function row(row) {
 function barRow(spec) {
   const width = Math.max(0, Math.min(1, Number(spec.ratio) || 0)) * 100
   const title = spec.hint === undefined || spec.hint === '' ? spec.label : spec.label + ' —— ' + spec.hint
-  return '<div class="evo-pbar-cell" title="' + esc(title) + '">'
-    + '<div class="evo-row-label">' + esc(spec.label) + '</div>'
-    + '<div class="evo-pbar evo-pbar--' + esc(spec.color) + '"><div class="evo-pbar-fill" style="width:' + width.toFixed(1) + '%"></div></div>'
-    + '<div class="evo-num">' + esc(spec.count) + (spec.percent === '' ? '' : '<span class="evo-pbar-pct"> ' + esc(spec.percent) + '</span>') + '</div>'
+  return '<div class="ana-pbar-cell" title="' + esc(title) + '">'
+    + '<div class="ana-row-label">' + esc(spec.label) + '</div>'
+    + '<div class="ana-pbar ana-pbar--' + esc(spec.color) + '"><div class="ana-pbar-fill" style="width:' + width.toFixed(1) + '%"></div></div>'
+    + '<div class="ana-num">' + esc(spec.count) + (spec.percent === '' ? '' : '<span class="ana-pbar-pct"> ' + esc(spec.percent) + '</span>') + '</div>'
     + '</div>'
 }
 
@@ -897,10 +897,10 @@ function barRow(spec) {
  * @returns {string}
  */
 function section(title, hint, body) {
-  return '<section class="evo-sect"><div class="evo-sect-head">'
-    + '<span class="evo-sect-title">' + esc(title) + '</span>'
-    + (hint === '' ? '' : '<span class="evo-sect-hint">' + esc(hint) + '</span>')
-    + '</div><div class="evo-sect-body">' + body + '</div></section>'
+  return '<section class="ana-sect"><div class="ana-sect-head">'
+    + '<span class="ana-sect-title">' + esc(title) + '</span>'
+    + (hint === '' ? '' : '<span class="ana-sect-hint">' + esc(hint) + '</span>')
+    + '</div><div class="ana-sect-body">' + body + '</div></section>'
 }
 
 /**
@@ -910,24 +910,24 @@ function section(title, hint, body) {
  */
 function metricCard(card) {
   const tone = card.tone === undefined ? 'accent' : card.tone
-  const hot = card.hot === true ? ' evo-card--hot' : ''
-  return '<div class="evo-card evo-card--' + esc(tone) + hot + '" title="' + esc(card.hint ?? '') + '">'
-    + '<div class="evo-card-label">' + esc(card.label) + '</div>'
-    + '<div class="evo-card-value">' + esc(card.value)
+  const hot = card.hot === true ? ' ana-card--hot' : ''
+  return '<div class="ana-card ana-card--' + esc(tone) + hot + '" title="' + esc(card.hint ?? '') + '">'
+    + '<div class="ana-card-label">' + esc(card.label) + '</div>'
+    + '<div class="ana-card-value">' + esc(card.value)
     + (card.unit === undefined ? '' : '<small>' + esc(card.unit) + '</small>') + '</div>'
-    + (card.sub === undefined ? '' : '<div class="evo-card-sub">' + esc(card.sub) + '</div>')
+    + (card.sub === undefined ? '' : '<div class="ana-card-sub">' + esc(card.sub) + '</div>')
     + '</div>'
 }
 
 /** @param {string} text @param {'info'|'warn'|'bad'} [kind] */
 function notice(text, kind) {
-  const modifier = kind === undefined || kind === 'warn' ? '' : ' evo-notice--' + kind
-  return '<div class="evo-notice' + modifier + '">' + esc(text) + '</div>'
+  const modifier = kind === undefined || kind === 'warn' ? '' : ' ana-notice--' + kind
+  return '<div class="ana-notice' + modifier + '">' + esc(text) + '</div>'
 }
 
 /** @param {string} title @param {string} body */
 function emptyState(title, body) {
-  return '<div class="evo-empty"><div class="evo-empty-title">' + esc(title) + '</div><div>' + esc(body) + '</div></div>'
+  return '<div class="ana-empty"><div class="ana-empty-title">' + esc(title) + '</div><div>' + esc(body) + '</div></div>'
 }
 
 /**
@@ -936,11 +936,11 @@ function emptyState(title, body) {
  * @returns {string}
  */
 function legend(groups) {
-  let out = '<div class="evo-legend">'
+  let out = '<div class="ana-legend">'
   for (const group of groups) {
-    out += '<span class="evo-legend-title">' + esc(group.title) + '</span>'
+    out += '<span class="ana-legend-title">' + esc(group.title) + '</span>'
     for (const item of group.items) {
-      out += '<span class="evo-legend-item">' + dot(item.color, item.hint) + esc(item.text) + '</span>'
+      out += '<span class="ana-legend-item">' + dot(item.color, item.hint) + esc(item.text) + '</span>'
     }
   }
   return out + '</div>'
@@ -1149,7 +1149,7 @@ function dashboardCards(model) {
       hint: '只读镜像由本窗口的文件读取产生；它永远不会写入你的存储',
     }),
   ]
-  return '<div class="evo-cards">' + cards.join('') + '</div>'
+  return '<div class="ana-cards">' + cards.join('') + '</div>'
 }
 
 /**
@@ -1203,22 +1203,22 @@ function strategySectionBody(section) {
     const raw = String(item.value ?? '')
     if (item.label === 'health') {
       const bad = item.tone === 'bad'
-      out.push('<div class="evo-row"><div class="evo-row-label">' + esc(label) + '</div><div class="evo-row-value">'
+      out.push('<div class="ana-row"><div class="ana-row-label">' + esc(label) + '</div><div class="ana-row-value">'
         + chip(bad ? 'bad' : item.tone === 'dim' ? 'dim' : 'ok', zhValue(item.label, raw, null)) + '</div><div></div></div>')
       continue
     }
     if (item.label === 'registered') {
-      out.push('<div class="evo-row"><div class="evo-row-label">' + esc(label) + '</div><div class="evo-row-value">'
+      out.push('<div class="ana-row"><div class="ana-row-label">' + esc(label) + '</div><div class="ana-row-value">'
         + raw.split(',').map((name) => chip('info', zhStrategy(name.trim()), zhStrategyHint(name.trim()))).join('')
         + '</div><div></div></div>')
       continue
     }
     const chain = raw.split('→').map((name) => name.trim()).filter((name) => name !== '')
     const body = chain.length === 0
-      ? '<span class="evo-c-dim">（空栈）</span>'
-      : chain.map((name) => chip(name === '(empty)' ? 'dim' : 'accent', zhStrategy(name), zhStrategyHint(name))).join('<span class="evo-arrow">→</span>')
-    out.push('<div class="evo-row"><div class="evo-row-label">' + esc(label === '生效中' && item.label === 'active' ? '生效中' : label) + '</div>'
-      + '<div class="evo-row-value">' + body + '</div><div></div></div>')
+      ? '<span class="ana-c-dim">（空栈）</span>'
+      : chain.map((name) => chip(name === '(empty)' ? 'dim' : 'accent', zhStrategy(name), zhStrategyHint(name))).join('<span class="ana-arrow">→</span>')
+    out.push('<div class="ana-row"><div class="ana-row-label">' + esc(label === '生效中' && item.label === 'active' ? '生效中' : label) + '</div>'
+      + '<div class="ana-row-value">' + body + '</div><div></div></div>')
   }
   if (out.length === 0) return emptyState('没有策略信息', '这一屏读不到策略栈')
   return out.join('')
@@ -1256,9 +1256,9 @@ function journalSectionBody(section) {
     const match = raw.match(/^(.+?)\s*·\s*(.+?)\s*ago$/)
     const type = match === null ? raw : match[1]
     const age = match === null ? '' : match[2]
-    out.push('<div class="evo-row"><div class="evo-row-label">'
-      + chip('dim', label) + '</div><div class="evo-row-value">'
-      + esc(zhEvent(type)) + '</div><div class="evo-row-value evo-c-dim">'
+    out.push('<div class="ana-row"><div class="ana-row-label">'
+      + chip('dim', label) + '</div><div class="ana-row-value">'
+      + esc(zhEvent(type)) + '</div><div class="ana-row-value ana-c-dim">'
       + esc(age === '' ? '' : zhAgeToken(age) + '前') + '</div></div>')
   }
   return out.join('')
@@ -1276,19 +1276,19 @@ function salienceSectionBody(section) {
     const salience = match === null ? 0 : Number(match[1])
     const kind = match === null ? '' : match[2]
     const state = match === null ? '' : match[3]
-    out.push('<div class="evo-rank">'
-      + '<div class="evo-rank-no">' + index + '</div>'
-      + '<div class="evo-rank-main"><div class="evo-rank-subject">' + esc(item.label) + '</div>'
-      + (item.note === undefined || item.note === '' ? '' : '<div class="evo-rank-body">' + esc(item.note) + '</div>')
+    out.push('<div class="ana-rank">'
+      + '<div class="ana-rank-no">' + index + '</div>'
+      + '<div class="ana-rank-main"><div class="ana-rank-subject">' + esc(item.label) + '</div>'
+      + (item.note === undefined || item.note === '' ? '' : '<div class="ana-rank-body">' + esc(item.note) + '</div>')
       + '</div>'
-      + '<div class="evo-rank-right">'
-      + '<div class="evo-chips">'
+      + '<div class="ana-rank-right">'
+      + '<div class="ana-chips">'
       + (kind === '' ? '' : chip(kindColor(kind), zhKind(kind)))
       + (state === '' ? '' : chip(stateColor(state), zhState(state), zhStateHint(state)))
       + '</div>'
-      + '<div class="evo-meter" title="重要度 ' + salience.toFixed(2) + '（0–1，越高越容易被召回）">'
-      + '<div class="evo-meter-fill" style="width:' + (Math.max(0, Math.min(1, salience)) * 100).toFixed(0) + '%"></div></div>'
-      + '<div class="evo-num">' + salience.toFixed(2) + '</div>'
+      + '<div class="ana-meter" title="重要度 ' + salience.toFixed(2) + '（0–1，越高越容易被召回）">'
+      + '<div class="ana-meter-fill" style="width:' + (Math.max(0, Math.min(1, salience)) * 100).toFixed(0) + '%"></div></div>'
+      + '<div class="ana-num">' + salience.toFixed(2) + '</div>'
       + '</div></div>')
   }
   if (out.length === 0) return emptyState('还没有可排行的记忆', '先让 agent 记住点什么')
@@ -1309,7 +1309,7 @@ function plainSectionBody(section) {
     hint: item.label === 'safe mode' ? '开启时元层冻结：策略与调参不再自动变化' : '',
   })).join('')
   if (skip.length > 0 && rows.length > 0) {
-    return body + '<div class="evo-row"><div class="evo-row-note">规模、活跃比例与数据来源见上方指标卡</div></div>'
+    return body + '<div class="ana-row"><div class="ana-row-note">规模、活跃比例与数据来源见上方指标卡</div></div>'
   }
   return body
 }
@@ -1782,27 +1782,27 @@ function renderGraphSvg(layout) {
   const nameOf = (id) => labelById.get(id) ?? String(id)
   out.push('<defs>')
   for (const color of ['ok', 'bad', 'violet', 'info', 'indigo', 'teal', 'warn', 'accent', 'dim']) {
-    out.push('<marker id="evo-arrow-' + color + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+    out.push('<marker id="ana-arrow-' + color + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
       + '<path d="M0,0 L10,5 L0,10 z" fill="' + esc(evoColor(color)) + '"></path></marker>')
   }
   out.push('</defs>')
 
   for (const edge of layout.edges) {
-    const dash = edge.exists ? '' : ' evo-edge--dangling'
+    const dash = edge.exists ? '' : ' ana-edge--dangling'
     const describe = edge.relZh === edge.label
       ? edge.relZh + '：' + nameOf(edge.from) + ' → ' + nameOf(edge.to)
       : nameOf(edge.from) + ' → ' + nameOf(edge.to) + '：' + edge.label
-    out.push('<path class="evo-edge' + dash + '" d="' + edge.d + '" stroke="' + esc(evoColor(edge.color))
-      + '" marker-end="url(#evo-arrow-' + edge.color + ')"'
+    out.push('<path class="ana-edge' + dash + '" d="' + edge.d + '" stroke="' + esc(evoColor(edge.color))
+      + '" marker-end="url(#ana-arrow-' + edge.color + ')"'
       + (edge.exists ? '' : ' stroke-opacity="0.8"')
       + '><title>' + esc(describe + (edge.exists ? '' : '（目标不在图中）')) + '</title></path>')
     // 关系标签压在连线与节点上会读不清：垫一块同背景色的圆角底，再把文字放上去。
     // 空标签直接跳过 —— 生命周期图不需要在每条迁移线上写一遍"相关"。
     if (edge.label !== '') {
       const labelWidth = textUnits(edge.label) * 6 + 12
-      out.push('<rect class="evo-elabel-bg" x="' + (edge.lx - labelWidth / 2).toFixed(1) + '" y="' + (edge.ly - 13).toFixed(1)
+      out.push('<rect class="ana-elabel-bg" x="' + (edge.lx - labelWidth / 2).toFixed(1) + '" y="' + (edge.ly - 13).toFixed(1)
         + '" width="' + labelWidth.toFixed(1) + '" height="16" rx="4"></rect>')
-      out.push('<text class="evo-elabel" x="' + edge.lx.toFixed(1) + '" y="' + (edge.ly - 1).toFixed(1)
+      out.push('<text class="ana-elabel" x="' + edge.lx.toFixed(1) + '" y="' + (edge.ly - 1).toFixed(1)
         + '" text-anchor="middle" fill="' + esc(evoColor(edge.color)) + '">' + esc(edge.label) + '</text>')
     }
   }
@@ -1818,17 +1818,17 @@ function renderGraphSvg(layout) {
         ? node.label + ' —— 这条连线指向一条不在当前图中的记忆（超出节点上限或已删除）'
         : node.label + '\n类型：' + zhKind(node.kind) + '　状态：' + zhState(node.state)
           + '\n重要度：' + Number(node.salience ?? 0).toFixed(2) + '　原始 id：' + node.id
-    out.push('<g class="evo-node">')
+    out.push('<g class="ana-node">')
     out.push('<title>' + esc(title) + '</title>')
-    out.push('<rect class="evo-node-box" x="' + node.x + '" y="' + node.y + '" width="' + node.w + '" height="' + node.h
+    out.push('<rect class="ana-node-box" x="' + node.x + '" y="' + node.y + '" width="' + node.w + '" height="' + node.h
       + '" rx="9" fill="' + esc(fill) + '" fill-opacity="' + (node.ghost ? '0' : '0.14') + '" stroke="' + esc(stroke)
       + '"' + (node.ghost ? ' stroke-dasharray="5 4"' : '') + '></rect>')
     if (!node.ghost && node.state !== '') {
-      out.push('<circle class="evo-dot" cx="' + (node.x + 12) + '" cy="' + (node.y + 12) + '" r="4.5" fill="'
+      out.push('<circle class="ana-dot" cx="' + (node.x + 12) + '" cy="' + (node.y + 12) + '" r="4.5" fill="'
         + esc(evoColor(stateColor(node.state))) + '"><title>' + esc(zhState(node.state) + ' —— ' + zhStateHint(node.state)) + '</title></circle>')
     }
     lines.forEach((line, index) => {
-      out.push('<text class="evo-node-label" x="' + (node.x + 24) + '" y="' + (node.y + 20 + index * 15)
+      out.push('<text class="ana-node-label" x="' + (node.x + 24) + '" y="' + (node.y + 20 + index * 15)
         + '">' + esc(line) + '</text>')
     })
     const sub = node.sub !== ''
@@ -1836,11 +1836,11 @@ function renderGraphSvg(layout) {
       : node.ghost
         ? '悬空引用'
         : zhKind(node.kind) + ' · ' + zhState(node.state) + ' · ' + Number(node.salience ?? 0).toFixed(2)
-    out.push('<text class="evo-node-sub" x="' + (node.x + 24) + '" y="' + (node.y + node.h - 7) + '">' + esc(clipUnits(sub, GRAPH_LABEL_UNITS)) + '</text>')
+    out.push('<text class="ana-node-sub" x="' + (node.x + 24) + '" y="' + (node.y + node.h - 7) + '">' + esc(clipUnits(sub, GRAPH_LABEL_UNITS)) + '</text>')
     out.push('</g>')
   }
 
-  return '<svg class="evo-svg" width="' + layout.width + '" height="' + layout.height
+  return '<svg class="ana-svg" width="' + layout.width + '" height="' + layout.height
     + '" viewBox="0 0 ' + layout.width + ' ' + layout.height + '" role="img" aria-label="记忆关系图">'
     + out.join('') + '</svg>'
 }
@@ -1882,7 +1882,7 @@ function renderMemoryGraphHtml(model, opts) {
     out.push(notice('这些记忆之间还没有任何关联 —— 现在看到的是孤立节点。用 ana_link 建立关系后，图会连起来', 'info'))
   }
   const zoom = Math.max(0.4, Math.min(2.5, Number(options.zoom ?? 1)))
-  out.push('<div class="evo-graph"><div class="evo-graph-inner" style="transform:scale(' + zoom.toFixed(2) + ')">'
+  out.push('<div class="ana-graph"><div class="ana-graph-inner" style="transform:scale(' + zoom.toFixed(2) + ')">'
     + renderGraphSvg(layout) + '</div></div>')
   return out.join('')
 }
@@ -1955,7 +1955,7 @@ function renderLifecycleHtml(model, opts) {
   }
   const layout = layoutGraph(nodes, edges, { direction: options.direction, maxNodes: 40 })
   const zoom = Math.max(0.4, Math.min(2.5, Number(options.zoom ?? 1)))
-  return '<div class="evo-graph"><div class="evo-graph-inner" style="transform:scale(' + zoom.toFixed(2) + ')">'
+  return '<div class="ana-graph"><div class="ana-graph-inner" style="transform:scale(' + zoom.toFixed(2) + ')">'
     + renderGraphSvg(layout) + '</div></div>'
     + legend([{ title: '状态（方框与连线）', items: LIFECYCLE_ORDER.map((state) => ({ color: stateColor(state), text: zhState(state), hint: zhStateHint(state) })) }])
 }
@@ -1974,17 +1974,17 @@ function renderTimelineHtml(model) {
   const items = timeline.map((row) => {
     const color = eventColor(row.type)
     const age = Number(row.at) > 0 ? zhAge(now - Number(row.at)) : '时间未知'
-    return '<div class="evo-tl-item" style="--evo-c:' + esc(evoColor(color)) + '">'
-      + '<div class="evo-tl-dot"></div>'
-      + '<div class="evo-tl-main"><div class="evo-tl-head">'
-      + '<span class="evo-tl-type">' + esc(zhEvent(row.type)) + '</span>'
+    return '<div class="ana-tl-item" style="--ana-c:' + esc(evoColor(color)) + '">'
+      + '<div class="ana-tl-dot"></div>'
+      + '<div class="ana-tl-main"><div class="ana-tl-head">'
+      + '<span class="ana-tl-type">' + esc(zhEvent(row.type)) + '</span>'
       + chip('dim', '#' + zhCount(row.seq))
-      + '<span class="evo-tl-meta">' + esc(age) + '</span>'
+      + '<span class="ana-tl-meta">' + esc(age) + '</span>'
       + '</div>'
-      + (String(row.detail ?? '') === '' ? '' : '<div class="evo-tl-detail">' + esc(zhTokens(row.detail)) + '</div>')
+      + (String(row.detail ?? '') === '' ? '' : '<div class="ana-tl-detail">' + esc(zhTokens(row.detail)) + '</div>')
       + '</div></div>'
   })
-  return '<div class="evo-tl">' + items.join('') + '</div>'
+  return '<div class="ana-tl">' + items.join('') + '</div>'
     + legend([{ title: '事件', items: ['strategy.setStack', 'meta.tune', 'memory.promote', 'revert', 'memory.expire'].map((type) => ({
       color: eventColor(type), text: zhEvent(type),
     })) }])
@@ -2034,7 +2034,7 @@ function diagramSummary(model) {
  * 窗口骨架（标题栏 / 工具栏 / 页脚 / 事件接线）—— 渲染层第 6 部分。
  *
  * 工具栏是**纯函数产出的 HTML**，理由和内容面板一样：预览里能截到它，验收时看到的
- * 就是窗口里的。交互靠 `data-evo-action` / `data-evo-field` 属性 + 根节点上的事件
+ * 就是窗口里的。交互靠 `data-ana-action` / `data-ana-field` 属性 + 根节点上的事件
  * 委托，所以这里不需要 React，也不需要每个按钮一个回调。
  *
  * **接线必须是原生监听器，不能用 React 的 `onClick` / `onChange` 属性。**
@@ -2064,10 +2064,10 @@ function wireWindowEvents(node, engine, hooks) {
   const onClick = (event) => {
     const target = event.target
     if (target === undefined || target === null || typeof target.closest !== 'function') return
-    const button = target.closest('[data-evo-action]')
+    const button = target.closest('[data-ana-action]')
     if (button === null) return
     if (typeof event.preventDefault === 'function') event.preventDefault()
-    engine.dispatch(String(button.getAttribute('data-evo-action')))
+    engine.dispatch(String(button.getAttribute('data-ana-action')))
   }
 
   // 原生 `change`：`<select>` 选中即触发；`<input type=number>` 在回车 / 失焦 /
@@ -2076,7 +2076,7 @@ function wireWindowEvents(node, engine, hooks) {
   const onChange = (event) => {
     const target = event.target
     if (target === undefined || target === null || typeof target.getAttribute !== 'function') return
-    const field = target.getAttribute('data-evo-field')
+    const field = target.getAttribute('data-ana-field')
     if (field === null || field === '') return
     engine.setField(String(field), target.value)
   }
@@ -2085,7 +2085,7 @@ function wireWindowEvents(node, engine, hooks) {
     if (event.button !== 0) return
     const target = event.target
     if (target === undefined || target === null || typeof target.closest !== 'function') return
-    if (target.closest('.evo-bar.evo-drag') === null) return
+    if (target.closest('.ana-bar.ana-drag') === null) return
     if (target.closest('button,select,input') !== null) return
     if (typeof opts.beginDrag === 'function') opts.beginDrag(event)
   }
@@ -2122,8 +2122,8 @@ function toolButton(action, label, icon, opts) {
   const options = opts === undefined || opts === null ? {} : opts
   const pressed = options.pressed === true ? ' aria-pressed="true"' : ''
   const extra = options.attrs === undefined ? '' : ' ' + options.attrs
-  return '<button type="button" class="evo-btn' + (options.iconOnly === true ? ' evo-icon' : '') + '"'
-    + ' data-evo-action="' + esc(action) + '"' + pressed + extra
+  return '<button type="button" class="ana-btn' + (options.iconOnly === true ? ' ana-icon' : '') + '"'
+    + ' data-ana-action="' + esc(action) + '"' + pressed + extra
     + ' title="' + esc(options.hint ?? label) + '">' + (icon ?? '') + esc(label) + '</button>'
 }
 
@@ -2131,14 +2131,14 @@ function toolButton(action, label, icon, opts) {
 function toolSelect(field, label, value, options, hint) {
   const body = options.map((item) => '<option value="' + esc(item.value) + '"'
     + (String(item.value) === String(value) ? ' selected' : '') + '>' + esc(item.label) + '</option>').join('')
-  return '<label class="evo-field" title="' + esc(hint ?? label) + '">' + esc(label)
-    + '<select class="evo-input" data-evo-field="' + esc(field) + '">' + body + '</select></label>'
+  return '<label class="ana-field" title="' + esc(hint ?? label) + '">' + esc(label)
+    + '<select class="ana-input" data-ana-field="' + esc(field) + '">' + body + '</select></label>'
 }
 
 /** 数字输入。 */
 function toolNumber(field, label, value, min, max, hint) {
-  return '<label class="evo-field" title="' + esc(hint ?? label) + '">' + esc(label)
-    + '<input class="evo-input evo-input--w" type="number" data-evo-field="' + esc(field) + '"'
+  return '<label class="ana-field" title="' + esc(hint ?? label) + '">' + esc(label)
+    + '<input class="ana-input ana-input--w" type="number" data-ana-field="' + esc(field) + '"'
     + ' min="' + esc(min) + '" max="' + esc(max) + '" value="' + esc(value) + '"></label>'
 }
 
@@ -2148,11 +2148,11 @@ function toolNumber(field, label, value, min, max, hint) {
  * @returns {string}
  */
 function viewSwitch(view) {
-  return '<div class="evo-zoom">'
-    + '<button type="button" class="evo-btn" data-evo-action="view-dashboard"'
+  return '<div class="ana-zoom">'
+    + '<button type="button" class="ana-btn" data-ana-action="view-dashboard"'
     + (view === 'dashboard' ? ' aria-pressed="true"' : '') + ' title="看整体状态：规模、生命周期、策略、日志">'
     + ANA_ICON.dashboard + '仪表盘</button>'
-    + '<button type="button" class="evo-btn" data-evo-action="view-graph"'
+    + '<button type="button" class="ana-btn" data-ana-action="view-graph"'
     + (view === 'graph' ? ' aria-pressed="true"' : '') + ' title="看关系与流转：记忆图谱、生命周期、策略时间线">'
     + ANA_ICON.graph + '图表</button>'
     + '</div>'
@@ -2165,7 +2165,7 @@ function viewSwitch(view) {
  */
 function renderToolbarHtml(state) {
   const view = state.view === 'graph' ? 'graph' : 'dashboard'
-  const parts = [viewSwitch(view), '<span class="evo-sep"></span>']
+  const parts = [viewSwitch(view), '<span class="ana-sep"></span>']
   if (view === 'graph') {
     parts.push(toolSelect('kind', '图种', state.kind, [
       { value: 'memory-graph', label: zhDiagramKind('memory-graph') },
@@ -2176,7 +2176,7 @@ function renderToolbarHtml(state) {
       { value: 'LR', label: '横向（从左到右）' },
       { value: 'TB', label: '纵向（从上到下）' },
     ], '关系图的排布方向；节点多的时候横向更好读'))
-    parts.push('<span class="evo-zoom">'
+    parts.push('<span class="ana-zoom">'
       + toolButton('zoom-out', '', ANA_ICON.zoomOut, { iconOnly: true, hint: '缩小图表' })
       + toolButton('zoom-reset', Math.round(Number(state.zoom ?? 1) * 100) + '%', null, { hint: '恢复到 100%' })
       + toolButton('zoom-in', '', ANA_ICON.zoomIn, { iconOnly: true, hint: '放大图表' })
@@ -2190,10 +2190,10 @@ function renderToolbarHtml(state) {
     { value: 'strict', label: zhRedaction('strict') },
     { value: 'none', label: zhRedaction('none') },
   ], zhRedactionHint(state.redaction)))
-  parts.push('<span class="evo-spacer"></span>')
+  parts.push('<span class="ana-spacer"></span>')
   parts.push(toolButton('refresh', '刷新', ANA_ICON.refresh, { hint: '立刻重新读取一次存储' }))
   parts.push(toolButton('close', '关闭', ANA_ICON.close, { hint: '关闭这个窗口（席位保留，入口还在）' }))
-  return '<div class="evo-bar">' + parts.join('') + '</div>'
+  return '<div class="ana-bar">' + parts.join('') + '</div>'
 }
 
 /**
@@ -2208,7 +2208,7 @@ function renderToolbarHtml(state) {
  * @returns {string}
  */
 function renderTextFallbackHtml(text, note) {
-  return notice(note, 'warn') + '<pre class="evo-text">' + esc(text) + '</pre>'
+  return notice(note, 'warn') + '<pre class="ana-text">' + esc(text) + '</pre>'
 }
 
 /**
@@ -2217,11 +2217,11 @@ function renderTextFallbackHtml(text, note) {
  * @returns {string}
  */
 function renderTitlebarHtml(opts) {
-  return '<div class="evo-bar evo-drag" data-evo-drag="1">'
-    + '<span class="evo-title">' + esc(opts.title)
-    + (opts.subtitle === undefined || opts.subtitle === '' ? '' : '<span class="evo-sect-hint">　' + esc(opts.subtitle) + '</span>')
+  return '<div class="ana-bar ana-drag" data-ana-drag="1">'
+    + '<span class="ana-title">' + esc(opts.title)
+    + (opts.subtitle === undefined || opts.subtitle === '' ? '' : '<span class="ana-sect-hint">　' + esc(opts.subtitle) + '</span>')
     + '</span>'
-    + '<span class="evo-btn evo-icon" aria-hidden="true" title="按住这里拖动窗口">⠿</span>'
+    + '<span class="ana-btn ana-icon" aria-hidden="true" title="按住这里拖动窗口">⠿</span>'
     + '</div>'
 }
 
@@ -2236,14 +2236,14 @@ function renderFooterHtml(state) {
   parts.push('<span title="存储版本号；每次写入都会推进">版本 v' + esc(zhCount(state.storeVersion)) + '</span>')
   parts.push('<span title="上一次成功渲染的时间">'
     + esc(Number(state.lastAt) > 0 ? zhAge(Date.now() - Number(state.lastAt)) + '刷新' : '尚未渲染') + '</span>')
-  if (state.busy === true) parts.push('<span class="evo-c-dim">读取中…</span>')
+  if (state.busy === true) parts.push('<span class="ana-c-dim">读取中…</span>')
   if (String(state.degraded ?? '') !== '') {
-    parts.push('<span class="evo-warn-text" title="Host 半还是旧版本，只能给出文本；重启桌面端后恢复图形视图">降级为文本视图</span>')
+    parts.push('<span class="ana-warn-text" title="Host 半还是旧版本，只能给出文本；重启桌面端后恢复图形视图">降级为文本视图</span>')
   }
   const warnings = Array.isArray(state.warnings) ? state.warnings : []
-  if (warnings.length > 0) parts.push('<span class="evo-warn-text" title="' + esc(warnings.join('；')) + '">' + warnings.length + ' 条提示</span>')
-  if (String(state.error ?? '') !== '') parts.push('<span class="evo-error-text" title="' + esc(state.error) + '">读取失败：' + esc(clip(state.error, 60)) + '</span>')
-  return '<div class="evo-foot">' + parts.join('') + '</div>'
+  if (warnings.length > 0) parts.push('<span class="ana-warn-text" title="' + esc(warnings.join('；')) + '">' + warnings.length + ' 条提示</span>')
+  if (String(state.error ?? '') !== '') parts.push('<span class="ana-error-text" title="' + esc(state.error) + '">读取失败：' + esc(clip(state.error, 60)) + '</span>')
+  return '<div class="ana-foot">' + parts.join('') + '</div>'
 }
 
     /* ── part: 10-const.js ───────────────────────────────────────────────── */
@@ -3416,9 +3416,9 @@ function createWindowEngine(deps) {
  *
  * **这里曾经有一份自己的样式表，那是这一轮最严重的 bug 的来源。**
  * 渲染层（`src/render/*`）产出标记，`installStyles()` 却装的是这份手写的旧表：
- * 新标记里的 `.evo-card` / `.evo-pbar` / `.evo-svg` / `.evo-c-*` 一条规则都没有，
+ * 新标记里的 `.ana-card` / `.ana-pbar` / `.ana-svg` / `.ana-c-*` 一条规则都没有，
  * 于是仪表盘退化成"标签一行、值一行"的堆叠，图形节点也丢了颜色；更糟的是新标记用
- * `.evo-pane` 而旧表里叫 `.evo-body`，内容区因此没有 `flex:1 1 auto;min-height:0;
+ * `.ana-pane` 而旧表里叫 `.ana-body`，内容区因此没有 `flex:1 1 auto;min-height:0;
  * overflow:auto`，一整屏 3000px 的内容把窗口撑爆、页脚被顶到看不见的地方。
  *
  * 病根不是"少写了几条规则"，而是**同一个职责有两个所有者**：标记和样式表分别
@@ -3469,7 +3469,7 @@ function installStyles(log) {
  *     `tools/preview.mjs` 截图里的 DOM —— "我截到的"就是"你看到的"。
  *
  * 交互只挂三个监听在窗口根节点上（事件委托）：`onPointerDown` 拖标题栏、
- * `onClick` 分发 `data-evo-action`、`onChange` 分发 `data-evo-field`。工具栏里的
+ * `onClick` 分发 `data-ana-action`、`onChange` 分发 `data-ana-field`。工具栏里的
  * 每个按钮/下拉框因此不需要各自的回调，也就不会随控件增减而漏接。
  *
  * 注入的内容全部来自本包渲染层，且**每一条 store 文本都过了 `esc()`**：这里注入的
@@ -3521,14 +3521,14 @@ function AnagenesisLauncher(props) {
     fired.current = true
     engine.open({ reason: props.reason })
   }, [engine, props.autoOpen, props.reason])
-  return createElement('div', { className: 'evo-launcher' },
+  return createElement('div', { className: 'ana-launcher' },
     createElement('button', {
       type: 'button',
-      className: 'evo-launch-btn',
+      className: 'ana-launch-btn',
       'aria-pressed': snap.open === true,
       onClick: () => engine.toggle(props.reason),
     }, createElement(AnagenesisIcon, { size: 15 }), snap.open ? '收起可视化窗口' : '打开可视化窗口'),
-    createElement('div', { className: 'evo-launch-hint' },
+    createElement('div', { className: 'ana-launch-hint' },
       props.hint === undefined
         ? '这是入口，不是第二个界面：仪表盘与图表全部在这个原生窗口里渲染，所有入口打开的是同一个窗口。'
         : props.hint),
@@ -3546,7 +3546,7 @@ function AnagenesisHeaderButton(props) {
   const label = 'anagenesis 可视化'
   return createElement('button', {
     type: 'button',
-    className: 'evo-header-button',
+    className: 'ana-header-button',
     title: label + '（原生窗口，只读；所有入口打开同一个窗口）',
     'aria-label': label,
     'aria-pressed': snap.open === true,
@@ -3584,7 +3584,7 @@ function AnagenesisWindow(props) {
    * 工具栏与内容都是 `dangerouslySetInnerHTML` 注入的，React 没有这些节点的 fiber；
    * React 的 `onChange` 是合成事件，只对它自己注册过的表单元素合成 —— 挂在外层 div
    * 上永远不会触发。用户报的"图种 / 方向 / 宽度点不动"就是这个：那三个控件全是
-   * `data-evo-field`（两个 `<select>` 加一个数字 `<input>`）。
+   * `data-ana-field`（两个 `<select>` 加一个数字 `<input>`）。
    */
   useEffect(() => {
     if (snap.open !== true) return undefined
@@ -3665,16 +3665,16 @@ function AnagenesisWindow(props) {
     role: 'dialog',
     'aria-label': props.title,
   },
-    injectChrome('evo-chrome', renderTitlebarHtml({ title: props.title, subtitle: snap.summary })),
-    injectChrome('evo-chrome', renderToolbarHtml(toolbarState)),
-    createElement('div', { className: 'evo-pane' },
+    injectChrome('ana-chrome', renderTitlebarHtml({ title: props.title, subtitle: snap.summary })),
+    injectChrome('ana-chrome', renderToolbarHtml(toolbarState)),
+    createElement('div', { className: 'ana-pane' },
       snap.html === ''
-        ? createElement('div', { className: 'evo-empty' },
-            createElement('div', { className: 'evo-empty-title' }, snap.busy ? '正在读取存储…' : '还没有数据'),
+        ? createElement('div', { className: 'ana-empty' },
+            createElement('div', { className: 'ana-empty-title' }, snap.busy ? '正在读取存储…' : '还没有数据'),
             createElement('div', null, snap.error === '' ? '首次读取通常在一秒内完成' : snap.error))
         : createElement('div', { dangerouslySetInnerHTML: { __html: snap.html } }),
     ),
-    injectChrome('evo-chrome', renderFooterHtml(footerState)),
+    injectChrome('ana-chrome', renderFooterHtml(footerState)),
   )
 }
 

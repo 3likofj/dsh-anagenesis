@@ -392,27 +392,27 @@ function renderGraphSvg(layout) {
   const nameOf = (id) => labelById.get(id) ?? String(id)
   out.push('<defs>')
   for (const color of ['ok', 'bad', 'violet', 'info', 'indigo', 'teal', 'warn', 'accent', 'dim']) {
-    out.push('<marker id="evo-arrow-' + color + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+    out.push('<marker id="ana-arrow-' + color + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
       + '<path d="M0,0 L10,5 L0,10 z" fill="' + esc(evoColor(color)) + '"></path></marker>')
   }
   out.push('</defs>')
 
   for (const edge of layout.edges) {
-    const dash = edge.exists ? '' : ' evo-edge--dangling'
+    const dash = edge.exists ? '' : ' ana-edge--dangling'
     const describe = edge.relZh === edge.label
       ? edge.relZh + '：' + nameOf(edge.from) + ' → ' + nameOf(edge.to)
       : nameOf(edge.from) + ' → ' + nameOf(edge.to) + '：' + edge.label
-    out.push('<path class="evo-edge' + dash + '" d="' + edge.d + '" stroke="' + esc(evoColor(edge.color))
-      + '" marker-end="url(#evo-arrow-' + edge.color + ')"'
+    out.push('<path class="ana-edge' + dash + '" d="' + edge.d + '" stroke="' + esc(evoColor(edge.color))
+      + '" marker-end="url(#ana-arrow-' + edge.color + ')"'
       + (edge.exists ? '' : ' stroke-opacity="0.8"')
       + '><title>' + esc(describe + (edge.exists ? '' : '（目标不在图中）')) + '</title></path>')
     // 关系标签压在连线与节点上会读不清：垫一块同背景色的圆角底，再把文字放上去。
     // 空标签直接跳过 —— 生命周期图不需要在每条迁移线上写一遍"相关"。
     if (edge.label !== '') {
       const labelWidth = textUnits(edge.label) * 6 + 12
-      out.push('<rect class="evo-elabel-bg" x="' + (edge.lx - labelWidth / 2).toFixed(1) + '" y="' + (edge.ly - 13).toFixed(1)
+      out.push('<rect class="ana-elabel-bg" x="' + (edge.lx - labelWidth / 2).toFixed(1) + '" y="' + (edge.ly - 13).toFixed(1)
         + '" width="' + labelWidth.toFixed(1) + '" height="16" rx="4"></rect>')
-      out.push('<text class="evo-elabel" x="' + edge.lx.toFixed(1) + '" y="' + (edge.ly - 1).toFixed(1)
+      out.push('<text class="ana-elabel" x="' + edge.lx.toFixed(1) + '" y="' + (edge.ly - 1).toFixed(1)
         + '" text-anchor="middle" fill="' + esc(evoColor(edge.color)) + '">' + esc(edge.label) + '</text>')
     }
   }
@@ -428,17 +428,17 @@ function renderGraphSvg(layout) {
         ? node.label + ' —— 这条连线指向一条不在当前图中的记忆（超出节点上限或已删除）'
         : node.label + '\n类型：' + zhKind(node.kind) + '　状态：' + zhState(node.state)
           + '\n重要度：' + Number(node.salience ?? 0).toFixed(2) + '　原始 id：' + node.id
-    out.push('<g class="evo-node">')
+    out.push('<g class="ana-node">')
     out.push('<title>' + esc(title) + '</title>')
-    out.push('<rect class="evo-node-box" x="' + node.x + '" y="' + node.y + '" width="' + node.w + '" height="' + node.h
+    out.push('<rect class="ana-node-box" x="' + node.x + '" y="' + node.y + '" width="' + node.w + '" height="' + node.h
       + '" rx="9" fill="' + esc(fill) + '" fill-opacity="' + (node.ghost ? '0' : '0.14') + '" stroke="' + esc(stroke)
       + '"' + (node.ghost ? ' stroke-dasharray="5 4"' : '') + '></rect>')
     if (!node.ghost && node.state !== '') {
-      out.push('<circle class="evo-dot" cx="' + (node.x + 12) + '" cy="' + (node.y + 12) + '" r="4.5" fill="'
+      out.push('<circle class="ana-dot" cx="' + (node.x + 12) + '" cy="' + (node.y + 12) + '" r="4.5" fill="'
         + esc(evoColor(stateColor(node.state))) + '"><title>' + esc(zhState(node.state) + ' —— ' + zhStateHint(node.state)) + '</title></circle>')
     }
     lines.forEach((line, index) => {
-      out.push('<text class="evo-node-label" x="' + (node.x + 24) + '" y="' + (node.y + 20 + index * 15)
+      out.push('<text class="ana-node-label" x="' + (node.x + 24) + '" y="' + (node.y + 20 + index * 15)
         + '">' + esc(line) + '</text>')
     })
     const sub = node.sub !== ''
@@ -446,11 +446,11 @@ function renderGraphSvg(layout) {
       : node.ghost
         ? '悬空引用'
         : zhKind(node.kind) + ' · ' + zhState(node.state) + ' · ' + Number(node.salience ?? 0).toFixed(2)
-    out.push('<text class="evo-node-sub" x="' + (node.x + 24) + '" y="' + (node.y + node.h - 7) + '">' + esc(clipUnits(sub, GRAPH_LABEL_UNITS)) + '</text>')
+    out.push('<text class="ana-node-sub" x="' + (node.x + 24) + '" y="' + (node.y + node.h - 7) + '">' + esc(clipUnits(sub, GRAPH_LABEL_UNITS)) + '</text>')
     out.push('</g>')
   }
 
-  return '<svg class="evo-svg" width="' + layout.width + '" height="' + layout.height
+  return '<svg class="ana-svg" width="' + layout.width + '" height="' + layout.height
     + '" viewBox="0 0 ' + layout.width + ' ' + layout.height + '" role="img" aria-label="记忆关系图">'
     + out.join('') + '</svg>'
 }
@@ -492,7 +492,7 @@ function renderMemoryGraphHtml(model, opts) {
     out.push(notice('这些记忆之间还没有任何关联 —— 现在看到的是孤立节点。用 ana_link 建立关系后，图会连起来', 'info'))
   }
   const zoom = Math.max(0.4, Math.min(2.5, Number(options.zoom ?? 1)))
-  out.push('<div class="evo-graph"><div class="evo-graph-inner" style="transform:scale(' + zoom.toFixed(2) + ')">'
+  out.push('<div class="ana-graph"><div class="ana-graph-inner" style="transform:scale(' + zoom.toFixed(2) + ')">'
     + renderGraphSvg(layout) + '</div></div>')
   return out.join('')
 }
@@ -565,7 +565,7 @@ function renderLifecycleHtml(model, opts) {
   }
   const layout = layoutGraph(nodes, edges, { direction: options.direction, maxNodes: 40 })
   const zoom = Math.max(0.4, Math.min(2.5, Number(options.zoom ?? 1)))
-  return '<div class="evo-graph"><div class="evo-graph-inner" style="transform:scale(' + zoom.toFixed(2) + ')">'
+  return '<div class="ana-graph"><div class="ana-graph-inner" style="transform:scale(' + zoom.toFixed(2) + ')">'
     + renderGraphSvg(layout) + '</div></div>'
     + legend([{ title: '状态（方框与连线）', items: LIFECYCLE_ORDER.map((state) => ({ color: stateColor(state), text: zhState(state), hint: zhStateHint(state) })) }])
 }
@@ -584,17 +584,17 @@ function renderTimelineHtml(model) {
   const items = timeline.map((row) => {
     const color = eventColor(row.type)
     const age = Number(row.at) > 0 ? zhAge(now - Number(row.at)) : '时间未知'
-    return '<div class="evo-tl-item" style="--evo-c:' + esc(evoColor(color)) + '">'
-      + '<div class="evo-tl-dot"></div>'
-      + '<div class="evo-tl-main"><div class="evo-tl-head">'
-      + '<span class="evo-tl-type">' + esc(zhEvent(row.type)) + '</span>'
+    return '<div class="ana-tl-item" style="--ana-c:' + esc(evoColor(color)) + '">'
+      + '<div class="ana-tl-dot"></div>'
+      + '<div class="ana-tl-main"><div class="ana-tl-head">'
+      + '<span class="ana-tl-type">' + esc(zhEvent(row.type)) + '</span>'
       + chip('dim', '#' + zhCount(row.seq))
-      + '<span class="evo-tl-meta">' + esc(age) + '</span>'
+      + '<span class="ana-tl-meta">' + esc(age) + '</span>'
       + '</div>'
-      + (String(row.detail ?? '') === '' ? '' : '<div class="evo-tl-detail">' + esc(zhTokens(row.detail)) + '</div>')
+      + (String(row.detail ?? '') === '' ? '' : '<div class="ana-tl-detail">' + esc(zhTokens(row.detail)) + '</div>')
       + '</div></div>'
   })
-  return '<div class="evo-tl">' + items.join('') + '</div>'
+  return '<div class="ana-tl">' + items.join('') + '</div>'
     + legend([{ title: '事件', items: ['strategy.setStack', 'meta.tune', 'memory.promote', 'revert', 'memory.expire'].map((type) => ({
       color: eventColor(type), text: zhEvent(type),
     })) }])

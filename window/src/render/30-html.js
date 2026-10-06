@@ -65,12 +65,12 @@ function tag(tagName, attributes, inner) {
  */
 function chip(color, text, hint) {
   const title = hint === undefined || hint === '' ? text : text + ' —— ' + hint
-  return '<span class="evo-chip evo-c-' + esc(color) + '" title="' + esc(title) + '">' + esc(text) + '</span>'
+  return '<span class="ana-chip ana-c-' + esc(color) + '" title="' + esc(title) + '">' + esc(text) + '</span>'
 }
 
 /** 无圆点的纯色标签。 */
 function dot(color, hint) {
-  return '<span class="evo-legend-swatch evo-c-' + esc(color) + '" title="' + esc(hint ?? '') + '"></span>'
+  return '<span class="ana-legend-swatch ana-c-' + esc(color) + '" title="' + esc(hint ?? '') + '"></span>'
 }
 
 /**
@@ -82,11 +82,11 @@ function row(row) {
   const color = row.color === undefined ? 'plain' : row.color
   const hint = row.hint === undefined ? '' : row.hint
   const title = hint === '' ? '' : ' title="' + esc(hint) + '"'
-  let out = '<div class="evo-row evo-tone-' + esc(color) + '">'
-    + '<div class="evo-row-label"' + title + '>' + esc(row.label) + '</div>'
-    + '<div class="evo-row-value">' + esc(row.value) + '</div>'
+  let out = '<div class="ana-row ana-tone-' + esc(color) + '">'
+    + '<div class="ana-row-label"' + title + '>' + esc(row.label) + '</div>'
+    + '<div class="ana-row-value">' + esc(row.value) + '</div>'
     + '<div></div>'
-  if (row.note !== undefined && row.note !== '') out += '<div class="evo-row-note">' + esc(row.note) + '</div>'
+  if (row.note !== undefined && row.note !== '') out += '<div class="ana-row-note">' + esc(row.note) + '</div>'
   return out + '</div>'
 }
 
@@ -98,10 +98,10 @@ function row(row) {
 function barRow(spec) {
   const width = Math.max(0, Math.min(1, Number(spec.ratio) || 0)) * 100
   const title = spec.hint === undefined || spec.hint === '' ? spec.label : spec.label + ' —— ' + spec.hint
-  return '<div class="evo-pbar-cell" title="' + esc(title) + '">'
-    + '<div class="evo-row-label">' + esc(spec.label) + '</div>'
-    + '<div class="evo-pbar evo-pbar--' + esc(spec.color) + '"><div class="evo-pbar-fill" style="width:' + width.toFixed(1) + '%"></div></div>'
-    + '<div class="evo-num">' + esc(spec.count) + (spec.percent === '' ? '' : '<span class="evo-pbar-pct"> ' + esc(spec.percent) + '</span>') + '</div>'
+  return '<div class="ana-pbar-cell" title="' + esc(title) + '">'
+    + '<div class="ana-row-label">' + esc(spec.label) + '</div>'
+    + '<div class="ana-pbar ana-pbar--' + esc(spec.color) + '"><div class="ana-pbar-fill" style="width:' + width.toFixed(1) + '%"></div></div>'
+    + '<div class="ana-num">' + esc(spec.count) + (spec.percent === '' ? '' : '<span class="ana-pbar-pct"> ' + esc(spec.percent) + '</span>') + '</div>'
     + '</div>'
 }
 
@@ -113,10 +113,10 @@ function barRow(spec) {
  * @returns {string}
  */
 function section(title, hint, body) {
-  return '<section class="evo-sect"><div class="evo-sect-head">'
-    + '<span class="evo-sect-title">' + esc(title) + '</span>'
-    + (hint === '' ? '' : '<span class="evo-sect-hint">' + esc(hint) + '</span>')
-    + '</div><div class="evo-sect-body">' + body + '</div></section>'
+  return '<section class="ana-sect"><div class="ana-sect-head">'
+    + '<span class="ana-sect-title">' + esc(title) + '</span>'
+    + (hint === '' ? '' : '<span class="ana-sect-hint">' + esc(hint) + '</span>')
+    + '</div><div class="ana-sect-body">' + body + '</div></section>'
 }
 
 /**
@@ -126,24 +126,24 @@ function section(title, hint, body) {
  */
 function metricCard(card) {
   const tone = card.tone === undefined ? 'accent' : card.tone
-  const hot = card.hot === true ? ' evo-card--hot' : ''
-  return '<div class="evo-card evo-card--' + esc(tone) + hot + '" title="' + esc(card.hint ?? '') + '">'
-    + '<div class="evo-card-label">' + esc(card.label) + '</div>'
-    + '<div class="evo-card-value">' + esc(card.value)
+  const hot = card.hot === true ? ' ana-card--hot' : ''
+  return '<div class="ana-card ana-card--' + esc(tone) + hot + '" title="' + esc(card.hint ?? '') + '">'
+    + '<div class="ana-card-label">' + esc(card.label) + '</div>'
+    + '<div class="ana-card-value">' + esc(card.value)
     + (card.unit === undefined ? '' : '<small>' + esc(card.unit) + '</small>') + '</div>'
-    + (card.sub === undefined ? '' : '<div class="evo-card-sub">' + esc(card.sub) + '</div>')
+    + (card.sub === undefined ? '' : '<div class="ana-card-sub">' + esc(card.sub) + '</div>')
     + '</div>'
 }
 
 /** @param {string} text @param {'info'|'warn'|'bad'} [kind] */
 function notice(text, kind) {
-  const modifier = kind === undefined || kind === 'warn' ? '' : ' evo-notice--' + kind
-  return '<div class="evo-notice' + modifier + '">' + esc(text) + '</div>'
+  const modifier = kind === undefined || kind === 'warn' ? '' : ' ana-notice--' + kind
+  return '<div class="ana-notice' + modifier + '">' + esc(text) + '</div>'
 }
 
 /** @param {string} title @param {string} body */
 function emptyState(title, body) {
-  return '<div class="evo-empty"><div class="evo-empty-title">' + esc(title) + '</div><div>' + esc(body) + '</div></div>'
+  return '<div class="ana-empty"><div class="ana-empty-title">' + esc(title) + '</div><div>' + esc(body) + '</div></div>'
 }
 
 /**
@@ -152,11 +152,11 @@ function emptyState(title, body) {
  * @returns {string}
  */
 function legend(groups) {
-  let out = '<div class="evo-legend">'
+  let out = '<div class="ana-legend">'
   for (const group of groups) {
-    out += '<span class="evo-legend-title">' + esc(group.title) + '</span>'
+    out += '<span class="ana-legend-title">' + esc(group.title) + '</span>'
     for (const item of group.items) {
-      out += '<span class="evo-legend-item">' + dot(item.color, item.hint) + esc(item.text) + '</span>'
+      out += '<span class="ana-legend-item">' + dot(item.color, item.hint) + esc(item.text) + '</span>'
     }
   }
   return out + '</div>'

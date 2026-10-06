@@ -1,7 +1,7 @@
 /**
  * 渲染层与样式表之间的一致性 —— 这一组测试的存在理由是一次真实的线上事故。
  *
- * 事故：渲染层产出新标记（`.evo-card` / `.evo-pbar` / `.evo-svg` / `.evo-pane`），
+ * 事故：渲染层产出新标记（`.ana-card` / `.ana-pbar` / `.ana-svg` / `.ana-pane`），
  * 但 `installStyles()` 装的是另一份手写旧表。72 个测试全绿 —— 因为它们只读 React
  * 节点树与注入的 HTML **字符串**，从来不看"这串 HTML 有没有对应的规则"。
  * 结果用户看到的是：仪表盘退化成标签堆叠、图形节点全灰、内容撑爆窗口。
@@ -96,8 +96,8 @@ test('styles: the document gets the render layer sheet, not a second hand-writte
     assert.equal(mounted.styleNodes(), 1, 'exactly one <style> is inserted')
     assert.equal(mounted.styleText(), R.ANA_CSS, 'the installed sheet IS the render layer sheet — one owner, no drift')
     assert.ok(R.ANA_CSS.includes('pointer-events:auto'), 'the click-through overlay still opts back into pointer events')
-    assert.ok(R.ANA_CSS.includes('.evo-pane{'), 'the content area that the markup actually uses')
-    assert.ok(R.ANA_CSS.includes('.evo-chrome{display:contents}'), 'the innerHTML host must not disturb layout')
+    assert.ok(R.ANA_CSS.includes('.ana-pane{'), 'the content area that the markup actually uses')
+    assert.ok(R.ANA_CSS.includes('.ana-chrome{display:contents}'), 'the innerHTML host must not disturb layout')
   } finally {
     mounted.dispose()
   }
@@ -114,19 +114,19 @@ test('styles: every class the render layer emits has a rule in the sheet', () =>
 
 test('styles: the React-side class names are in the sheet too', () => {
   // 漂移有两个方向。上面一条管渲染层产出的字符串；这一条管 React 组件自己写的
-  // className（`evo-header-button` / `evo-launcher` / `evo-pane` …）—— 它们不在
+  // className（`ana-header-button` / `ana-launcher` / `ana-pane` …）—— 它们不在
   // 渲染层的 HTML 里，所以上一条看不见它们。
   //
-  // 刻意**不**做"样式表里不能有没用到的规则"的反向检查：色板（`evo-pbar--warn`、
-  // `evo-c-info` …）是给所有数据状态准备的，样本里没出现不等于没用。那种测试只会
+  // 刻意**不**做"样式表里不能有没用到的规则"的反向检查：色板（`ana-pbar--warn`、
+  // `ana-c-info` …）是给所有数据状态准备的，样本里没出现不等于没用。那种测试只会
   // 逼着后来的人删掉需要的规则。
   const source = readFileSync(resolve(here, '..', 'client.js'), 'utf8')
   const used = new Set()
   for (const match of source.matchAll(/className:\s*'([^']+)'/g)) {
-    for (const name of match[1].split(/\s+/)) if (name.startsWith('evo-')) used.add(name)
+    for (const name of match[1].split(/\s+/)) if (name.startsWith('ana-')) used.add(name)
   }
   for (const match of source.matchAll(/className:\s*'[^']*'\s*\+\s*[^,]*/g)) {
-    for (const inner of match[0].matchAll(/'(evo-[a-z0-9-]+)/g)) used.add(inner[1])
+    for (const inner of match[0].matchAll(/'(ana-[a-z0-9-]+)/g)) used.add(inner[1])
   }
   assert.ok(used.size >= 5, `expected to find the React-side class names (got ${used.size})`)
   const missing = [...used].filter((name) => !R.ANA_CSS.includes('.' + name))
@@ -135,6 +135,6 @@ test('styles: the React-side class names are in the sheet too', () => {
 
 test('styles: the toolbar labels cannot wrap (a real regression)', () => {
   // 第一版截图里「节点上限」被挤成两行 —— 那是一次真实的布局塌陷，不是理论风险。
-  assert.ok(/\.evo-field\{[^}]*white-space:nowrap/.test(R.ANA_CSS), 'control labels must not wrap')
-  assert.ok(/\.evo-bar\{[^}]*flex-wrap:wrap/.test(R.ANA_CSS), 'but the bar itself must wrap rather than clip the close button')
+  assert.ok(/\.ana-field\{[^}]*white-space:nowrap/.test(R.ANA_CSS), 'control labels must not wrap')
+  assert.ok(/\.ana-bar\{[^}]*flex-wrap:wrap/.test(R.ANA_CSS), 'but the bar itself must wrap rather than clip the close button')
 })
