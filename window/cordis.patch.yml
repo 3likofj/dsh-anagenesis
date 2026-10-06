@@ -1,0 +1,48 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# dsh-anagenesis-window bundle patch — exactly ONE row, on purpose.
+#
+# A package that declares `dsh.client` may own exactly one active Loader row
+# (@deepseek-ai/dsh-client-modules rejects a second one with
+# `client-modules: package X resolves from multiple active Loader sources`).
+# That is why this window is NOT a sixth row of `dsh-anagenesis`: that package is
+# 5 rows and the `anagenesis` preset mounts them again in its own scope, so
+# adding `dsh.client` there could never boot (HANDOFF §10.14).
+#
+# Corollary, load-bearing: **never add this package to the `anagenesis` preset's
+# composition and never mount it twice in one profile.** The preset is *aware* of
+# the capability (see OPERATING_NOTES) but does not mount it — the window is
+# optional by design, so a profile without it loses the window and nothing else.
+#
+# The pair is still one product:
+#   dsh-anagenesis          memory / strategy / tuner / guard / TUI + diagram tools
+#   dsh-anagenesis-window   the desktop window + its four entry points   ← this row
+# ─────────────────────────────────────────────────────────────────────────────
+
+- insert:
+    - id: anagenesis-window
+      name: dsh-anagenesis-window
+      config:
+        # Leave empty to use $DSH_HOME/anagenesis — the same store the core row
+        # writes. The window only ever READS it (mirror replay, no writer handle).
+        rootDir: ''
+        title: anagenesis · 可视化
+        # Same policy vocabulary as `ana_dashboard` / `ana_diagram`. 'secrets'
+        # scrubs credential-shaped text and omits bodies before anything reaches
+        # the renderer, so the window can never show more than the tools do.
+        redaction: secrets
+        color: never
+        width: 96
+        events: 8
+        salience: 5
+        diagramNodes: 40
+        includeBodies: false
+        refreshMs: 2000
+        # Which of the four entrance seats to arm. 'auto' = the compatibility
+        # matrix in README.md: with DSH-better-sidebar installed the official
+        # right-sidebar seat steps aside (better-sidebar owns that same column),
+        # without it the seat is the one official entrance.
+        officialEntry: auto
+        # The agent-reachable door (`ana_window`). Registered by this row only;
+        # the `anagenesis` preset does not mount this row, so a preset session
+        # gets the tool if and only if the profile installed the window.
+        exposeWindowTool: true

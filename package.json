@@ -1,0 +1,99 @@
+{
+  "name": "dsh-anagenesis",
+  "version": "0.1.0",
+  "description": "anagenesis —— DeepSeek Harness 上的可编程记忆编排层 + 自我进化引擎：自带闭环记忆存储（不依赖任何外部记忆插件）、17 个面向 Agent 的语义记忆工具（召回/提交/提升/降级/拆分/锁定/过期/反事实重思）、运行时可切换的注入策略、带审计与回滚的元策略自调节、全程可逆效应、自动注册 `anagenesis` Agent 预设，以及零依赖可视化层（终端仪表盘 + mermaid/d2/ascii 文本图表 + 可选桌面窗口）。",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "cordis-plugin",
+    "memory",
+    "agent-memory",
+    "local-first",
+    "anagenesis"
+  ],
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./paths": "./src/paths.js",
+    "./tools": "./src/tools/index.js",
+    "./guard": "./src/guard/index.js",
+    "./preset": "./src/preset/index.js",
+    "./preset-bind": "./src/preset/bind.js",
+    "./viz": "./src/viz/index.js",
+    "./viz/model": "./src/viz/model.js",
+    "./viz/tui": "./src/viz/tui.js",
+    "./viz/diagram": "./src/viz/diagram.js",
+    "./viz/redact": "./src/viz/redact.js",
+    "./viz/mirror": "./src/viz/mirror.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "tools/viz-watch.mjs",
+    "tools/migrate-store.mjs",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "tools/preflight-publish.mjs"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "plugin": true,
+    "kind": "server",
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "disclosure": {
+    "cloud": false,
+    "network": [],
+    "offlineMode": true,
+    "apiKeys": [],
+    "permissions": {
+      "filesystem": "dsh-anagenesis owns $DSH_HOME/anagenesis/ (journal/*.jsonl append-only log + snapshot.json). For read compatibility with the pre-rename layout it will ALSO open $DSH_HOME/evolution/ when the new directory does not exist yet, and it never moves that data on its own — `tools/migrate-store.mjs` does the copy and only when the operator runs it. It reads and writes nothing else; it never opens another plugin's memory store. The visualization row only reads that store, and `tools/viz-watch.mjs` is a standalone read-only viewer the operator runs themselves — the plugin never spawns a process. The `anagenesis` preset row may also write $DSH_HOME/.agent-presets/anagenesis/ on hosts that still discover presets as directories, and removes exactly the files it created when unloaded.",
+      "subprocess": "none — no shell, no network, no model calls"
+    },
+    "jurisdiction": [],
+    "retention": "local-only journal under $DSH_HOME/anagenesis; memory deletion is explicit via ana_forget/ana_expire and is itself journaled. Compaction appends archive segments and by default keeps every seq revertible; the optional retainEvents policy (default 0 = off) may prune whole archive segments, and any such loss is recorded in journal/pruned.json and reported by ana_audit view=status"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "^0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "test": "node --import ./test/host-loader.mjs --test test/*.test.js",
+    "check": "node --check src/index.js && node --check src/paths.js && node --check src/tools/index.js && node --check src/preset/index.js && node --check src/guard/index.js && node --check src/meta/reflect.js && node --check src/viz/index.js && node --check src/viz/model.js && node --check src/viz/tui.js && node --check src/viz/diagram.js && node --check tools/viz-watch.mjs && node --check tools/asar-scan.mjs && node --check tools/migrate-store.mjs && node --check tools/preflight-publish.mjs && node --check tools/pack-gate.mjs",
+    "verify:boot": "node tools/verify-boot.mjs",
+    "test:window": "node --import ./test/host-loader.mjs --test window/test/*.test.mjs",
+    "gate:window": "cd window && npm run gate",
+    "gate:pack": "node tools/pack-gate.mjs",
+    "migrate:store": "node tools/migrate-store.mjs",
+    "migrate:store:apply": "node tools/migrate-store.mjs --apply",
+    "scan:asar": "node tools/asar-scan.mjs",
+    "viz": "node tools/viz-watch.mjs --once",
+    "viz:watch": "node tools/viz-watch.mjs --watch",
+    "preflight": "node tools/preflight-publish.mjs"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/3likofj/dsh-anagenesis.git"
+  },
+  "homepage": "https://github.com/3likofj/dsh-anagenesis#readme",
+  "bugs": {
+    "url": "https://github.com/3likofj/dsh-anagenesis/issues"
+  },
+  "author": "dsh-anagenesis contributors"
+}

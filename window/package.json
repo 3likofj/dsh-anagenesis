@@ -1,0 +1,75 @@
+{
+  "name": "dsh-anagenesis-window",
+  "version": "0.1.0",
+  "description": "anagenesis 桌面可视化窗口 —— 为 dsh-anagenesis 提供一个桌面原生窗口（中文仪表盘、真实内联 SVG 关系图 / 生命周期 / 策略时间线），并在三个入口位置挂上它：DSH-better-sidebar 侧栏行、官方右侧侧边栏、对话/轨迹顶部栏。单行 web 插件：一个 Loader 行、一份 `dsh.client` 客户端半、所有入口共用同一个窗口。运行时探测 DSH-better-sidebar 是否在位，不在时降级且可逆、无残留。只读：绝不写入存储。",
+  "private": false,
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": {
+      "types": "./client.d.ts",
+      "default": "./client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "client.js",
+    "client.d.ts",
+    "cordis.patch.yml",
+    "tools/build-client.mjs",
+    "tools/render-lib.mjs",
+    "tools/preview.mjs",
+    "tools/live-probe.mjs",
+    "tools/live-ui-probe.mjs",
+    "README.md",
+    "README.en.md"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "plugin": true,
+    "kind": "server",
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@deepseek-ai/dsh-tools": "^0.2.0-rc.2",
+    "dsh-anagenesis": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    },
+    "dsh-anagenesis": {
+      "optional": false
+    }
+  },
+  "scripts": {
+    "build:client": "node tools/build-client.mjs",
+    "probe": "node --import ../test/host-loader.mjs tools/live-probe.mjs",
+    "check": "node --check src/index.js && node --check src/host/viz.js && node --check src/host/rpc.js && node --check src/host/tool.js && node --check client.js && node --check tools/live-probe.mjs && node tools/build-client.mjs --check",
+    "test": "node --import ../test/host-loader.mjs --test test/*.test.mjs",
+    "test:ui": "node tools/live-ui-probe.mjs",
+    "preview": "node tools/preview.mjs",
+    "gate": "npm run build:client && npm run check && npm test && npm run probe"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/3likofj/dsh-anagenesis.git"
+  },
+  "homepage": "https://github.com/3likofj/dsh-anagenesis#readme",
+  "bugs": {
+    "url": "https://github.com/3likofj/dsh-anagenesis/issues"
+  },
+  "author": "dsh-anagenesis contributors"
+}

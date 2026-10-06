@@ -1,0 +1,19 @@
+# 依赖与构建产物
+node_modules/
+*.tgz
+
+# 内部文档：留作本地会话连续性使用，**不进公开仓库**
+HANDOFF.md
+PROJECT-STATE.md
+
+# 命名迁移时的原件备份（只作本地留档）
+.rename-backup/
+
+# 离线渲染预览：`node window/tools/preview.mjs` 的产物（HTML + 截图）
+window/.preview/
+
+# 打包与编辑器
+dist/
+.DS_Store
+Thumbs.db
+*.log

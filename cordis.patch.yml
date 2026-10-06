@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# dsh-anagenesis bundle patch — inserted when this package is in
+# `dsh.profile.bundles`. Five rows, each independently disableable:
+#
+#   anagenesis-core     the service: store + strategy registry + engine + tuner.
+#                      Publishes `ctx.anagenesis`. No DSH tool/agent surface.
+#   anagenesis-tools    the agent-facing semantic memory tools (ana_*).
+#                      Binds to the service through `inject: ['tools','anagenesis']`.
+#   anagenesis-guard    the monotonic safety guardrail (ctx.tools.guard).
+#                      Registered globally; also reachable per agent scope.
+#   anagenesis-preset   auto-registers the `anagenesis` agent preset through the
+#                      `agentPresets` service (directory fallback on old hosts).
+#   anagenesis-viz      the read-only visualization row: `ana_dashboard` (TUI
+#                      frame) + `ana_diagram` (mermaid/d2/ascii). No service, no
+#                      timers, no writes unless auditRenders is turned on.
+#
+# Separate rows mean a broken meta-layer cannot take the memory layer down with
+# it: `disabled: true` on `anagenesis-guard` is a one-line kill switch, and
+# disabling `anagenesis-tools` leaves the service and journal untouched. The same
+# goes for visualization — it is the one part of the plugin that is allowed to be
+# absent, so `disabled: true` here removes both tools and nothing else.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- insert:
+    - id: anagenesis-core
+      name: dsh-anagenesis
+      config:
+        # rootDir defaults to $DSH_HOME/anagenesis — override to relocate the
+        # self-contained store (journal/ + snapshot.json).
+        safeMode: false
+        persistDebounceMs: 250
+        recallDefaultTokenBudget: 1600
+
+    - id: anagenesis-tools
+      name: dsh-anagenesis/tools
+      config:
+        exposeAuditTool: true
+        exposeTuneTool: true
+
+    - id: anagenesis-guard
+      name: dsh-anagenesis/guard
+
+    - id: anagenesis-preset
+      name: dsh-anagenesis/preset
+      config:
+        # Registers the `anagenesis` agent preset on every boot; the definition
+        # is withdrawn automatically when this plugin unloads.
+        presetIds:
+          - anagenesis
+        # OFF for this host. Directory presets under $DSH_HOME/.agent-presets/
+        # are dead weight here: @deepseek-ai/dsh-agent-preset-registry 0.2.0-rc.2
+        # has zero references to `.agent-presets`, `preset.yml` or `readdir` —
+        # it sources presets from the Loader tree plus `agentPresets.register()`.
+        # The reactive bind below covers the real case (the service publishing
+        # after this row applies), so nothing is lost. Set true only on hosts
+        # old enough to scan the directory roster.
+        autoInstallDirectoryForm: false
+
+    - id: anagenesis-viz
+      name: dsh-anagenesis/viz
+      config:
+        # A frame inside a tool answer is not a TTY, so colour is off unless a
+        # caller asks for it. The live TUI (`node tools/viz-watch.mjs --watch`)
+        # decides for itself from its own stdout.
+        color: never
+        width: 96
+        # 'secrets' scrubs credential-shaped text and omits bodies. Use 'strict'
+        # to mask labels as well, 'none' only for local debugging.
+        redaction: secrets
+        events: 8
+        salience: 5
+        diagramNodes: 40
+        includeBodies: false
+        # Off by default: a read must not grow the journal. When on, each render
+        # appends one `viz.render` audit row (audit rows are history and are not
+        # compensable — see HANDOFF §16/D3).
+        auditRenders: false
