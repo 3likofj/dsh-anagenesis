@@ -20,7 +20,7 @@ frame in the window and the same frame in a tool answer are byte-identical.
 `@deepseek-ai/dsh-client-modules` allows a package that declares `dsh.client`
 **exactly one active Loader row**. `dsh-anagenesis` is five rows, and the `anagenesis`
 preset mounts them a second time — adding `dsh.client` there could never boot. That
-failure was hit and reverted once already (HANDOFF §10.14). So the window is a
+failure was hit and reverted once already. So the window is a
 single-row sibling, and:
 
 > **Never add `dsh-anagenesis-window` to the `anagenesis` preset composition and never
@@ -97,7 +97,7 @@ the plugin that owns it:
 | `ctx.webServer.register({ kind, path, handler })`, duplicate path throws | `@deepseek-ai/dsh-host-webserver` README + `lib/index.js` |
 | `dsh.client` classic-script bundle shape, `require` closed table | `@deepseek-ai/dsh-client-modules` README; `dsh-my-guardian/lib/client.src.js` |
 
-Two contracts are **assumed** rather than read, and are listed in HANDOFF §18 with
+Two contracts are **assumed** rather than read, and are listed here with
 the reason: the exact slot keys `sidebar.footer.action` (from the live Slot ledger —
 observed, not typed) and the shape of `guide` entries beyond `{ id, order, title }`.
 
@@ -105,11 +105,11 @@ observed, not typed) and the shape of `guide` entries beyond `{ id, order, title
 
 ```sh
 # from this repository (the profile already links dsh-anagenesis the same way)
-dsh plugin --profile desktop add link:D:/cj/anagenesis/window
+dsh plugin --profile desktop add link:<absolute path to this repo>/window
 ```
 
 Or add to `$DSH_PROFILE_DIR/package.json`:
-`"dsh-anagenesis-window": "link:D:/cj/anagenesis/window"` and put
+`"dsh-anagenesis-window": "link:<absolute path to this repo>/window"` and put
 `dsh-anagenesis-window` into `dsh.profile.bundles`. A bundle patch
 (`cordis.patch.yml`) inserts the single row — no `cordis.patch.yml` edits.
 
@@ -152,8 +152,8 @@ The client half is only served when the row is mounted, so **nothing appears unt
 the package is installed**. One command, and it applies live — no restart:
 
 ```sh
-plugin_manager action=install_bundle target=D:/cj/anagenesis/window
-# → dependencies += "dsh-anagenesis-window": "link:D:/cj/anagenesis/window"
+plugin_manager action=install_bundle target=<absolute path to this repo>/window
+# → dependencies += "dsh-anagenesis-window": "link:<absolute path to this repo>/window"
 # → dsh.profile.bundles += "dsh-anagenesis-window"
 # → {"stage":"enable","changed":true,"application":"applied"}
 ```
@@ -213,4 +213,4 @@ code.
 
 They *cannot* prove layout, pointer dragging or that a real host renders the window
 where it looks right — there is no layout engine here. Those need one real-host pass
-(HANDOFF §18).
+.

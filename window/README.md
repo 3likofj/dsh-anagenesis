@@ -28,7 +28,7 @@ checkpoint。渲染不是事务，也就没有需要回滚的逆操作。
 `@deepseek-ai/dsh-client-modules` 允许一个声明了 `dsh.client` 的包**有且只有一个活跃
 Loader 行**。`dsh-anagenesis` 是五行，而 `anagenesis` 预设会在自己的 scope 里把这五行
 再挂一次 —— 在那里加 `dsh.client` 永远启动不起来。这个失败模式已经真实踩过一次并回滚
-（HANDOFF §10.14）。所以窗口是一个**单行兄弟包**，并且：
+（DSH 的硬约束）。所以窗口是一个**单行兄弟包**，并且：
 
 > **永远不要把 `dsh-anagenesis-window` 加进 `anagenesis` 预设的组合里，也永远不要在同一个
 > profile 里挂两次。** 预设*知道*这个能力（见 `dsh-anagenesis` 的 `OPERATING_NOTES`），
@@ -46,7 +46,7 @@ Loader 行**。`dsh-anagenesis` 是五行，而 `anagenesis` 预设会在自己�
 | 3 | 官方右侧侧边栏 | `official-right-sidebar` | `ctx.sidebarRightTabs.register()` + 槽位 `sidebar.right.pane.tab` / `.title` | better-sidebar 不在（或 `officialEntry: always`） |
 | 4 | 对话 / 轨迹顶部栏 | `conversation-header` | 槽位 `conversation.session.header.utilities` | slots 服务在位 |
 
-一共 **3 个入口**。编号保留 **1 / 3 / 4**，不改号 —— 这样读历史台账（HANDOFF §18）时
+一共 **3 个入口**。编号保留 **1 / 3 / 4**，不改号 —— 这样跟既有界面编号对照时
 不会错位。
 
 > **入口 2（better-sidebar 底部工作台）已按要求移除。** 移除的理由不是"多余"，而是它
@@ -126,7 +126,7 @@ cd window && node tools/preview.mjs --root "$DSH_HOME/anagenesis"   # 用真实�
 | `ctx.webServer.register({ kind, path, handler })`，重复 path 抛错 | `@deepseek-ai/dsh-host-webserver` 的 README + `lib/index.js` |
 | `dsh.client` 的 classic-script bundle 形状、`require` 封闭表 | `@deepseek-ai/dsh-client-modules` 的 README；`dsh-my-guardian/lib/client.src.js` |
 
-有两条契约是**假定**而非读到的，已连同理由记在 HANDOFF §18：槽位键 `sidebar.footer.action`
+有两条契约是**假定**而非读到的，其理由一并写在这里：槽位键 `sidebar.footer.action`
 的确切拼写（来自运行中 shell 的 Slot 台账 —— 是观测到的，不是类型里有的），以及 `guide`
 条目除 `{ id, order, title }` 之外的形状。
 
@@ -134,11 +134,11 @@ cd window && node tools/preview.mjs --root "$DSH_HOME/anagenesis"   # 用真实�
 
 ```sh
 # 从本仓库安装（profile 里 dsh-anagenesis 本来就是这样链进去的）
-dsh plugin --profile desktop add link:D:/cj/anagenesis/window
+dsh plugin --profile desktop add link:<仓库绝对路径>/window
 ```
 
 或者写进 `$DSH_PROFILE_DIR/package.json`：
-`"dsh-anagenesis-window": "link:D:/cj/anagenesis/window"`，并把 `dsh-anagenesis-window`
+`"dsh-anagenesis-window": "link:<仓库绝对路径>/window"`，并把 `dsh-anagenesis-window`
 放进 `dsh.profile.bundles`。本包自带 bundle patch（`cordis.patch.yml`）插入那唯一一行
 —— profile 的 `cordis.patch.yml` 不需要手改。
 
@@ -181,8 +181,8 @@ entries opt back into pointer events — so an occupant never blocks the app und
 且立即生效 —— 不需要重启：
 
 ```sh
-plugin_manager action=install_bundle target=D:/cj/anagenesis/window
-# → dependencies += "dsh-anagenesis-window": "link:D:/cj/anagenesis/window"
+plugin_manager action=install_bundle target=<仓库绝对路径>/window
+# → dependencies += "dsh-anagenesis-window": "link:<仓库绝对路径>/window"
 # → dsh.profile.bundles += "dsh-anagenesis-window"
 # → {"stage":"enable","changed":true,"application":"applied"}
 ```
@@ -240,4 +240,4 @@ npm run test:ui        # 真机点击探针：真 Chromium 打开运行中的 GU
 "依赖出现/消失会翻转席位"、"拆卸之后什么都不剩"都是对真实代码的行为结论。
 
 它们**不能**证明布局、指针拖动，也不能证明真机把窗口渲染在看起来对的位置上 —— 这里没有
-布局引擎。那些需要一次真机复核（HANDOFF §18）。
+布局引擎。那些需要一次真机复核。
