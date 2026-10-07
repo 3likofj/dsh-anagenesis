@@ -241,3 +241,8 @@ npm run test:ui        # 真机点击探针：真 Chromium 打开运行中的 GU
 
 它们**不能**证明布局、指针拖动，也不能证明真机把窗口渲染在看起来对的位置上 —— 这里没有
 布局引擎。那些需要一次真机复核。
+
+## 许可证
+
+[Apache License 2.0](https://github.com/3likofj/dsh-anagenesis/blob/main/LICENSE) —— 与内核包
+`dsh-anagenesis` 同一许可证，本包自带一份许可证正文。

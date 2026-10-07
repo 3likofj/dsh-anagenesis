@@ -1,10 +1,10 @@
 # dsh-anagenesis
 
-[中文](README.md) · [Changelog](CHANGELOG.md) · MIT
+[中文](README.md) · [Changelog](CHANGELOG.md) · Apache-2.0
 
 [![npm](https://img.shields.io/npm/v/dsh-anagenesis?label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis)
 [![npm (window)](https://img.shields.io/npm/v/dsh-anagenesis-window?label=window&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis-window)
-[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](package.json)
 
 > **Memory your agent actually owns — and you can actually see.**
@@ -172,4 +172,4 @@ Also: `exposeAuditTool` / `exposeTuneTool` on the tools row; `lang` / `redaction
 
 ## License
 
-MIT
+[Apache License 2.0](LICENSE) © 2026 dsh-anagenesis contributors

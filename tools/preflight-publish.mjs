@@ -2,7 +2,7 @@
  * 发布前自检 —— 把"我是不是忘了什么"变成一条命令。
  *
  * 这个脚本存在的理由：发布是**一次性的、错了要撤回**的动作，而漏项往往是
- * 静默的（比如 `package.json` 写着 MIT 却没有 LICENSE 文件、README 的安装命令
+ * 静默的（比如 `package.json` 声明的许可证和 `LICENSE` 正文对不上、README 的安装命令
  * 指向只有作者本机才有的路径）。逐项检查，任一不过就退出码 1。
  *
  *   node tools/preflight-publish.mjs
@@ -26,9 +26,19 @@ const pkg = readJson('package.json')
 const winPkg = readJson('window/package.json')
 
 // ── 法律与元数据 ──────────────────────────────────────────────────────────
-check('LICENSE 文件存在', existsSync(join(root, 'LICENSE')), 'package.json 声明 MIT，就必须真的带上许可证正文')
-check('父包 package.json license 与 LICENSE 一致', pkg.license === 'MIT' && existsSync(join(root, 'LICENSE')), pkg.license ?? '缺失')
-check('窗口包 license 与 LICENSE 一致', winPkg.license === 'MIT', winPkg.license ?? '缺失')
+// 期望的 SPDX id 只写一次；改许可证时改这一行，两个包与 LICENSE 正文会被一起校验。
+const EXPECTED_LICENSE = 'Apache-2.0'
+const LICENSE_MARKERS = ['Apache License', 'Version 2.0, January 2004']
+const licenseBody = existsSync(join(root, 'LICENSE')) ? readFileSync(join(root, 'LICENSE'), 'utf8') : ''
+const licenseIsExpected = LICENSE_MARKERS.every((marker) => licenseBody.includes(marker))
+check('LICENSE 正文就是声明的许可证', licenseBody.length > 0 && licenseIsExpected,
+  licenseBody.length === 0 ? 'LICENSE 缺失' : `正文里找不到 ${LICENSE_MARKERS.join(' / ')}`)
+check(`父包 package.json license 与 LICENSE 一致（${EXPECTED_LICENSE}）`,
+  pkg.license === EXPECTED_LICENSE && licenseIsExpected, pkg.license ?? '缺失')
+check(`窗口包 package.json license 与父包一致（${EXPECTED_LICENSE}）`,
+  winPkg.license === EXPECTED_LICENSE, winPkg.license ?? '缺失')
+check('窗口包自带 LICENSE', existsSync(join(root, 'window', 'LICENSE')),
+  'npm 只会打包本包目录里的许可证正文，父包那份进不了窗口包的 tarball')
 check('父包 repository', typeof pkg.repository?.url === 'string', pkg.repository?.url ?? '缺失 —— 市场卡片与 npm 页面都会缺链接')
 check('窗口包 repository', typeof winPkg.repository?.url === 'string', winPkg.repository?.url ?? '缺失')
 check('父包 homepage', typeof pkg.homepage === 'string', pkg.homepage ?? '缺失')

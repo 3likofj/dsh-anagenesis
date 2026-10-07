@@ -214,3 +214,9 @@ code.
 They *cannot* prove layout, pointer dragging or that a real host renders the window
 where it looks right — there is no layout engine here. Those need one real-host pass
 .
+
+## License
+
+[Apache License 2.0](https://github.com/3likofj/dsh-anagenesis/blob/main/LICENSE) — the
+same license as the kernel package `dsh-anagenesis`; this package ships its own copy of
+the license text.

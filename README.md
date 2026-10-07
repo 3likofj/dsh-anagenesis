@@ -1,10 +1,10 @@
 # dsh-anagenesis
 
-[English](README.en.md) · [更新日志](CHANGELOG.md) · MIT
+[English](README.en.md) · [更新日志](CHANGELOG.md) · Apache-2.0
 
 [![npm](https://img.shields.io/npm/v/dsh-anagenesis?label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis)
 [![npm（窗口包）](https://img.shields.io/npm/v/dsh-anagenesis-window?label=window&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis-window)
-[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](package.json)
 
 > **给 Agent 一套它自己管得住、你也看得见的记忆。**
@@ -166,4 +166,4 @@ $DSH_HOME/anagenesis/
 
 ## 许可证
 
-MIT
+[Apache License 2.0](LICENSE) © 2026 dsh-anagenesis contributors

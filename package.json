@@ -86,7 +86,7 @@
     "viz:watch": "node tools/viz-watch.mjs --watch",
     "preflight": "node tools/preflight-publish.mjs"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/3likofj/dsh-anagenesis.git"

@@ -24,7 +24,8 @@
     "tools/live-probe.mjs",
     "tools/live-ui-probe.mjs",
     "README.md",
-    "README.en.md"
+    "README.en.md",
+    "LICENSE"
   ],
   "dsh": {
     "manifestVersion": 1,
@@ -62,7 +63,7 @@
     "preview": "node tools/preview.mjs",
     "gate": "npm run build:client && npm run check && npm test && npm run probe"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/3likofj/dsh-anagenesis.git"

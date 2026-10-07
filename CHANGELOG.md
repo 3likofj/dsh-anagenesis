@@ -3,6 +3,19 @@
 本文件记录每次发布的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 变更
+
+- **许可证：MIT → Apache License 2.0**。`LICENSE` 换成 Apache-2.0 正文，父包与窗口包的
+  `package.json` 均声明 `"license": "Apache-2.0"`，窗口包自带一份 `LICENSE`（npm 只打包
+  本包目录里的许可证正文），两个 README 的许可证徽章与章节同步更新。
+  **注意**：已经发布的 `0.1.0` 仍是 MIT —— 已发出的版本不可追溯改约，Apache-2.0 适用于
+  本仓库当前内容与此后发布的版本。
+
+- 发布前自检不再把许可证写死成 MIT：期望的 SPDX id 只在 `tools/preflight-publish.mjs`
+  里声明一次，并新增「LICENSE 正文真的是 Apache-2.0」「窗口包自带 LICENSE」两项断言。
+
 ## [0.1.0] — 2026-10-07
 
 首个公开版本。
