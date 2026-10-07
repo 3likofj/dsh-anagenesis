@@ -2,6 +2,11 @@
 
 [中文](README.md) · [Changelog](CHANGELOG.md) · MIT
 
+[![npm](https://img.shields.io/npm/v/dsh-anagenesis?label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis)
+[![npm (window)](https://img.shields.io/npm/v/dsh-anagenesis-window?label=window&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis-window)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](package.json)
+
 > **Memory your agent actually owns — and you can actually see.**
 >
 > Not another "automatic memory black box". Memory operations are tools the agent calls on purpose,
@@ -32,6 +37,8 @@
 ## Install
 
 ### Everything at once (recommended: kernel + desktop window)
+
+Both packages are published on npm: [`dsh-anagenesis`](https://www.npmjs.com/package/dsh-anagenesis) · [`dsh-anagenesis-window`](https://www.npmjs.com/package/dsh-anagenesis-window) — `dsh plugin add` pulls the latest from npm.
 
 ```bash
 dsh plugin add dsh-anagenesis          # kernel: memory + strategies + guard + visualization tools
@@ -162,14 +169,6 @@ Also: `exposeAuditTool` / `exposeTuneTool` on the tools row; `lang` / `redaction
 **Can I use a real semantic retriever?** Yes. Install a backend at runtime with `service.useEmbedder(...)`, then `reembed()` to recompute stored vectors. Until then the status view keeps reporting that stored vectors are stale.
 
 **Why is the desktop window a separate package?** A package that declares `dsh.client` may own exactly **one** active Loader row, and the kernel is five rows (the preset mounts them again). That is a DSH constraint, so the window is a single-row sibling.
-
-## Development
-
-```bash
-npm test && npm run check && npm run verify:boot   # 69 unit tests + syntax + 87 boot-sandbox checks
-npm run preflight && npm run gate:pack             # publish metadata + real pack/install (resolves exports installed)
-cd window && npm run gate                          # window: build + 83 tests + live HTTP probe
-```
 
 ## License
 

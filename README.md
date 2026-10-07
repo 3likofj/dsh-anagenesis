@@ -2,6 +2,11 @@
 
 [English](README.en.md) · [更新日志](CHANGELOG.md) · MIT
 
+[![npm](https://img.shields.io/npm/v/dsh-anagenesis?label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis)
+[![npm（窗口包）](https://img.shields.io/npm/v/dsh-anagenesis-window?label=window&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis-window)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](package.json)
+
 > **给 Agent 一套它自己管得住、你也看得见的记忆。**
 >
 > 不是又一个"自动记忆黑箱"：记忆操作是 Agent 手里的工具，注入策略运行时可换，
@@ -31,6 +36,8 @@
 ## 安装
 
 ### 全家桶（推荐：内核 + 桌面窗口一次装齐）
+
+两个包都已发布在 npm：[`dsh-anagenesis`](https://www.npmjs.com/package/dsh-anagenesis) · [`dsh-anagenesis-window`](https://www.npmjs.com/package/dsh-anagenesis-window) —— `dsh plugin add` 直接取 npm 上的最新版。
 
 ```bash
 dsh plugin add dsh-anagenesis          # 内核：记忆 + 策略 + 护栏 + 可视化工具
@@ -156,14 +163,6 @@ $DSH_HOME/anagenesis/
 **能换成真正的语义检索吗？** 能。运行时 `service.useEmbedder(...)` 装入后端，再 `reembed()` 把已存向量重算一遍；在那之前状态里会一直标记向量"陈旧"。
 
 **为什么桌面窗口是单独的包？** 声明 `dsh.client` 的包只能有**一个**活跃 Loader 行，而内核是五行（预设还会再挂一次）。这是 DSH 的硬约束，所以窗口做成单行兄弟包。
-
-## 开发
-
-```bash
-npm test && npm run check && npm run verify:boot   # 内核：69 个单元测试 + 语法检查 + 87 条启动沙箱检查
-npm run preflight && npm run gate:pack             # 发布元数据自检 + 真打包/真装（校验安装态的导出解析）
-cd window && npm run gate                          # 窗口：构建 + 83 个测试 + 真机 HTTP 探针
-```
 
 ## 许可证
 
