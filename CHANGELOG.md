@@ -3,13 +3,16 @@
 本文件记录每次发布的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.1.1] — 2026-10-08
+
+> 本版本不改变任何运行时行为，只把许可证声明与发布元数据对齐到 Apache-2.0。
 
 ### 变更
 
-- **许可证：MIT → Apache License 2.0**。`LICENSE` 换成 Apache-2.0 正文，父包与窗口包的
-  `package.json` 均声明 `"license": "Apache-2.0"`，窗口包自带一份 `LICENSE`（npm 只打包
-  本包目录里的许可证正文），两个 README 的许可证徽章与章节同步更新。
+- **许可证：MIT → Apache License 2.0**。仓库的 `LICENSE` 已换成 Apache-2.0 正文；本版本补齐
+  它没有覆盖到的元数据：父包与窗口包的 `package.json` 均声明 `"license": "Apache-2.0"`，
+  窗口包自带一份 `LICENSE`（npm 只打包本包目录里的许可证正文），两个 README 的许可证徽章
+  与章节同步更新。
   **注意**：已经发布的 `0.1.0` 仍是 MIT —— 已发出的版本不可追溯改约，Apache-2.0 适用于
   本仓库当前内容与此后发布的版本。
 
