@@ -10,7 +10,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -635,4 +635,65 @@ test('adapters: the preset row binds reactively when agentPresets appears after 
   assert.equal(registered.length, 1)
   assert.equal(registered[0].id, 'anagenesis')
   assert.ok(registered[0].plugins.some((row) => row.id === 'anagenesis-tools'))
+})
+
+test('adapters: a journal written before 0.2.0 (events with no `ns`) still answers losslessly', async () => {
+  // The regression this pins shipped in 0.2.0 and was caught by the running
+  // host, not by the suite: `ns` only exists from schema v7 on, so every event
+  // an older version wrote has no such field. Passing `event.ns` straight into a
+  // tool answer produced `{ ns: undefined }` — `JSON.stringify` drops the key, the
+  // host sees a different object than the tool returned, and it rejects the whole
+  // call with `value is not lossless JSON`. `ana_audit view=journal` (and
+  // `view=status`, whenever its last five events are all old) broke on every
+  // upgraded store. The fixture is the honest one: a real journal, with the field
+  // removed the way 0.1.1 wrote it.
+  const dir = await mkdtemp(join(tmpdir(), 'ana-legacy-journal-'))
+  const host = makeHost()
+  try {
+    await coreApply(host.ctx, { rootDir: dir })
+    toolsApply(host.ctx, {})
+    await mountPreset(host)
+    const call = (name, args) => host.tools.get(name).execute(args, {})
+    await call('ana_remember', { kind: 'fact', subject: 'legacy shaped event', body: 'written by the new code, then rewritten as an old one' })
+    await call('ana_recall', { intent: 'orient' })
+    await disposeHost(host)
+
+    // Rewrite every live segment the way a 0.1.1 store looks: no `ns`, and no
+    // snapshot either — so the store must rebuild from a replay.
+    const journalDir = join(dir, 'journal')
+    let rewritten = 0
+    for (const name of await readdir(journalDir)) {
+      if (!name.startsWith('journal-')) continue
+      const path = join(journalDir, name)
+      const lines = (await readFile(path, 'utf8')).split('\n').filter((line) => line.trim() !== '')
+      const stripped = lines.map((line) => {
+        const event = JSON.parse(line)
+        delete event.ns
+        rewritten += 1
+        return JSON.stringify(event)
+      })
+      await writeFile(path, `${stripped.join('\n')}\n`, 'utf8')
+    }
+    assert.ok(rewritten > 0, 'the fixture really did remove the field')
+    await rm(join(dir, 'snapshot.json'), { force: true })
+
+    const reopened = makeHost()
+    await coreApply(reopened.ctx, { rootDir: dir })
+    toolsApply(reopened.ctx, {})
+    await mountPreset(reopened)
+    const callAgain = (name, args) => reopened.tools.get(name).execute(args, {})
+
+    const status = await callAgain('ana_audit', { view: 'status' })
+    assert.equal(losslessProblem(status, 'ana_audit view=status over a pre-0.2.0 journal'), null)
+    assert.ok(status.status.lastEvents.every((row) => typeof row.ns === 'string'), 'every event reports a namespace')
+
+    const journal = await callAgain('ana_audit', { view: 'journal', limit: 50 })
+    assert.equal(losslessProblem(journal, 'ana_audit view=journal over a pre-0.2.0 journal'), null)
+    assert.ok(journal.rows.length >= rewritten - 2, `the replay surfaced the events: ${journal.rows.length}`)
+    assert.ok(journal.rows.every((row) => typeof row.ns === 'string'), 'a pre-0.2.0 event is a global event, and says so')
+
+    await disposeHost(reopened)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })

@@ -253,8 +253,13 @@ export function buildReadTools(deps) {
                 at: event.ts,
                 type: event.type,
                 scope: event.scope,
-                ns: event.ns,
-                touched: event.touched,
+                // Defensive default on top of the store's read model: `ns` only
+                // exists from schema v7 on, an event written before that upgrade
+                // is a global event, and leaving it `undefined` would keep the
+                // key, lose it through `JSON.stringify`, and make the host reject
+                // the whole answer as "not lossless JSON".
+                ns: event.ns ?? 'global',
+                touched: event.touched ?? [],
                 payload: event.payload,
               })),
             }

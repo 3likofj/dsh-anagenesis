@@ -190,17 +190,17 @@ export class MemoryStore {
         // Already folded into the snapshot or the checkpoint. Still held in
         // memory because `ana_audit view=journal` must trace the seq and
         // `revert(seq)` needs the archived `undo` patch.
-        this.#events.set(event.seq, event)
+        this.#events.set(event.seq, asReadModel(event))
         if (event.archived === true) archived += 1
         continue
       }
       if (event.patch === undefined) {
-        this.#events.set(event.seq, event)
+        this.#events.set(event.seq, asReadModel(event))
         continue
       }
       state = applyPatch(state, event.patch)
       state = { ...state, version: event.seq, updatedAt: event.ts ?? state.updatedAt }
-      this.#events.set(event.seq, event)
+      this.#events.set(event.seq, asReadModel(event))
       applied += 1
     }
     this.#state = freezeState(state)
@@ -554,6 +554,24 @@ function freezeState(state) {
       history: Object.freeze([...(state.tuning?.history ?? [])]),
     }),
   })
+}
+
+/**
+ * The read model of a journal event.
+ *
+ * `ns` (which namespace segment an event belongs to) only exists from schema v7
+ * on. Every event written before that upgrade is a *global* event, and leaving
+ * the field `undefined` on those is not cosmetic: a tool that passes it through
+ * returns `{ ns: undefined }`, `JSON.stringify` then drops the key, and the host
+ * rejects the whole answer with `value is not lossless JSON` — which is exactly
+ * how `ana_audit view=journal` broke on every upgraded store. Defaulting it here,
+ * where the in-memory read model is built, means no consumer has to remember.
+ * @param {any} event
+ * @returns {any}
+ */
+function asReadModel(event) {
+  if (event === null || typeof event !== 'object') return event
+  return event.ns === undefined ? { ...event, ns: GLOBAL_NAMESPACE } : event
 }
 
 /**

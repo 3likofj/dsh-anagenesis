@@ -1,6 +1,6 @@
 {
   "name": "dsh-anagenesis",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "anagenesis —— DeepSeek Harness 上的可编程记忆编排层 + 自我进化引擎：自带闭环记忆存储（不依赖任何外部记忆插件）、17 个面向 Agent 的语义记忆工具（召回/提交/提升/降级/拆分/锁定/过期/反事实重思）、运行时可切换的注入策略、带审计与回滚的元策略自调节、全程可逆效应、自动注册 `anagenesis` Agent 预设，以及零依赖可视化层（终端仪表盘 + mermaid/d2/ascii 文本图表 + 可选桌面窗口）。",
   "keywords": [
     "dsh",

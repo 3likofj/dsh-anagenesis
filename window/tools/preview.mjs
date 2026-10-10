@@ -464,6 +464,7 @@ const tones = { accent: 0, warn: 0, plain: 0, dim: 0 }
 for (const item of scopeRows) if (Object.prototype.hasOwnProperty.call(tones, String(item.tone))) tones[String(item.tone)] += 1
 const rowWith = (label) => scopeRows.find((item) => String(item.label) === label)
 const htmlScope = /作用域/.test(html)
+const demoMode = options.root === ''
 
 const report = {
   store: storeRoot, demo: options.root === '', scope: options.scope, html: htmlPath, bytes: html.length,
@@ -494,13 +495,17 @@ const report = {
     // 剩下的是用户真正会读到的东西。
     chineseOnly: !/\b(overview|lifecycle|draft|active|verified|locked|deprecated|expired|retired|safe mode|archives|checkpoints|default)\b/
       .test(html.replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]*>/g, ' ')),
-    // 作用域分区必须真的在页面上，并且同时画出三种色调。
+    // 作用域分区必须真的在页面上。
     scopeSectionDrawn: htmlScope && scopeRows.length > 0,
-    scopeHasMine: tones.accent > 0,
-    scopeHasOtherProject: tones.warn > 0,
-    scopeHasGlobal: tones.plain > 0,
+    // 三种色调是**演示数据**的断言：README 那几张图靠它们证明"当前项目 / 另一个项目 /
+    // 全局"真的画成了三种颜色。真实存储里有没有别的项目不是这个工具能要求的事，
+    // 所以 `--root` 跑真实数据时这三项不参与判定（也不该把它判红）。
+    scopeHasMine: !demoMode || tones.accent > 0,
+    scopeHasOtherProject: !demoMode || tones.warn > 0,
+    scopeHasGlobal: !demoMode || tones.plain > 0,
   },
   screenshots: [],
+  screenshotsSkipped: '',
 }
 
 if (options.shot) {
@@ -546,6 +551,6 @@ if (options.json) {
     + ` · 未标注旧记忆 ${report.scopeFacts.legacyUntagged} · 来源块 ${report.scope}`)
   for (const [name, ok] of Object.entries(report.checks)) console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${name}`)
   if (report.screenshots.length > 0) for (const file of report.screenshots) console.log(`  截图    ${file}`)
-  else console.log(`  截图    跳过 —— ${report.screenshotsSkipped}`)
+  else console.log(`  截图    跳过 —— ${report.screenshotsSkipped !== '' ? report.screenshotsSkipped : '--no-shot（本次只要 HTML）'}`)
 }
 process.exit(Object.values(report.checks).every(Boolean) ? 0 : 1)

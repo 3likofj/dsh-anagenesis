@@ -666,7 +666,10 @@ export async function apply(ctx, config = {}) {
           // backend than the active one: recall would be comparing spaces.
           stale: (state.embed?.id ?? null) !== activeEmbedder.id || (state.embed?.dim ?? null) !== activeEmbedder.dim,
         },
-        lastEvents: store.recentEvents({ limit: 5 }).map((event) => ({ seq: event.seq, type: event.type, ns: event.ns })),
+        // `ns` is the namespace segment an event landed in; events written
+        // before schema v7 have none and are global by definition — the `?? null`
+        // is what keeps this lossless on an upgraded store.
+        lastEvents: store.recentEvents({ limit: 5 }).map((event) => ({ seq: event.seq, type: event.type, ns: event.ns ?? null })),
       }
     },
   }

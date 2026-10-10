@@ -3,6 +3,24 @@
 本文件记录每次发布的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.1] — 2026-10-10
+
+> 修一个只在**升级路径**上出现的缺陷：`0.2.0` 在旧存储上会看不到日志。
+
+### 修复
+
+- **`ana_audit view=journal` / `view=status` 在升级后的存储上会被宿主拒绝**（`value is not lossless JSON`）。
+  根因：`ns`（事件落在哪个命名空间段）是 v7 才有的字段，而升级前写下的每一条事件都没有它；工具把
+  `event.ns` 直接透传成 `{ ns: undefined }` 时，`JSON.stringify` 会丢掉这个键，宿主因此看到与工具返回值
+  不同的对象并拒绝整次调用。本机真实存储里 201 条事件有 189 条属于这种情况 —— 也就是说**任何从 0.1.x
+  升级上来的用户都会踩到**。
+  修法有两层：replay 时把内存读模型里的 `ns` 归一化为 `global`（`asReadModel`，一处修好所有消费者）、
+  两个出口再兜一层 `?? null`（`ana_audit view=journal`、`status().lastEvents`）。
+- 新增回归测试 **"a journal written before 0.2.0 (events with no ns) still answers losslessly"**（在
+  `test/adapter.test.js`）：它构造的是**真存储** —— 先写一批事件，再把日志文件里每一行的 `ns` 删掉、
+  连快照一起删掉，强制从旧形状的日志重放，然后断言两个审计视图的输出都能无损往返 JSON。该用例在修复前会红。
+- 窗口包与父包同步到 0.2.1（窗口包本身无功能变更，只为让 `main` 与 npm 上发布的产物一致）。
+
 ## [0.2.0] — 2026-10-10
 
 > 两个缺陷驱动了这一版：**不同项目的记忆会互相召回**（张冠李戴），以及**不启用预设时模型照样写记忆**
