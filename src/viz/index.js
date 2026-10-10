@@ -127,7 +127,7 @@ export function apply(ctx, config = {}) {
   const stats = { renders: 0, diagrams: 0, lastAt: /** @type {number|null} */ (null), errors: 0 }
 
   /** A read-only view of the live service. Nothing here is cached beyond one call. */
-  const liveSource = () => {
+  const liveSource = (exec) => {
     const svc = service()
     return {
       state: svc.store.state,
@@ -135,8 +135,40 @@ export function apply(ctx, config = {}) {
       journal: svc.store.journalStats(),
       engine: { active: svc.engine.describe(), health: svc.engine.health() },
       tuning: svc.tuner.report(),
+      // Scope and gear are facts about *this caller*, not about the store, so
+      // they can only come from the service. Both are pure reads.
+      scope: svc.scopeReport(exec),
+      permissions: svc.permissionReport(exec),
       selfStatus: { renders: stats.renders, diagrams: stats.diagrams, lastAt: stats.lastAt, errors: stats.errors, mode: 'tool' },
       origin: 'live',
+    }
+  }
+
+  /**
+   * Where this call stands, as the model wants it.
+   *
+   * The default is the *honest* view: what this agent could actually recall
+   * (current project + global + current session). `allProjects: true` is the
+   * operator's explicit widening to the whole store, and it is loud about it —
+   * the model adds a warning line saying the agent itself would not see these.
+   * The session comes from `context.sessionId`, **not** `context.scope.session`.
+   * `scopeFor()` returns both on purpose and they are not the same value: the
+   * scope tag carries a session only when the write tier *is* the session
+   * (`tier: 'session'`), so for the ordinary project-tier caller
+   * `scope.session` is `null`. Handing that to the filter makes `scopeRelation`
+   * call every `session:<id>` record `other-session` — an agent blind to the
+   * working notes of the session it is sitting in, which is precisely the half
+   * of "current project + global + current session" this default promises.
+   * @param {any} exec
+   * @param {any} args
+   * @returns {{ projectId: string, sessionId: string|null, allProjects: boolean }}
+   */
+  const callScope = (exec, args) => {
+    const context = service().scopeFor(exec)
+    return {
+      projectId: context.identity.id,
+      sessionId: context.sessionId ?? null,
+      allProjects: args?.allProjects === true,
     }
   }
 
@@ -167,8 +199,10 @@ export function apply(ctx, config = {}) {
 
   ctx.tools.register(defineTool({
     name: 'ana_dashboard',
-    description: '打开一个终端原生仪表盘，俯视你自己的记忆：生命周期与类型分布、策略栈、'
-      + '偏离 envelope 默认值的那些调参旋钮、日志尾部、最显著的那些信念，以及这个渲染器自身的健康状况。'
+    description: '打开一个终端原生仪表盘，俯视你自己的记忆：作用域（当前项目、各命名空间的条数、默认写入档位、预设档位 gear）、'
+      + '生命周期与类型分布、策略栈、偏离 envelope 默认值的那些调参旋钮、日志尾部、最显著的那些信念，以及这个渲染器自身的健康状况。'
+      + '默认只显示你**召得回**的那些记录（当前项目 + 全局 + 当前会话），并在作用域分区里写明这一点；'
+      + '传 allProjects: true 才是运维视角（整份存储，含其它项目的记忆），此时帧里会多一条告警说明 Agent 自己看不到它们。'
       + '只读 —— 除非本行配置了 auditRenders，否则绝不写入存储。'
       + '要看持续重绘的实时视图，请在终端里运行 `node tools/viz-watch.mjs --watch`。',
     parameters: {
@@ -176,7 +210,8 @@ export function apply(ctx, config = {}) {
       width: { type: 'integer', description: '文本帧宽度（终端格数，48–200）。' },
       events: { type: 'integer', description: '显示多少条日志事件。' },
       salience: { type: 'integer', description: '显示多少条最高显著度的记录。' },
-      scope: { type: 'json', description: '{"session","workspace","preset"}，把视图限制在你召得回的那些记录上。' },
+      allProjects: { type: 'boolean', description: '默认 false：只显示当前项目 + 全局 + 当前会话（模型真正召得回的那些）。true 时放宽到整份存储（运维视角，会加一条告警）。' },
+      scope: { type: 'json', description: '{"session","workspace","preset"}（旧形状），在作用域过滤之上再收窄一层；新调用请用 allProjects。' },
       redaction: { type: 'string', enum: [...REDACTION_LEVELS], description: '产出文本的脱敏策略。默认 secrets。' },
       includeBodies: { type: 'boolean', description: '在每条最高显著度记录下面附一段截断的正文预览（脱敏开启时会被擦洗）。' },
     },
@@ -197,12 +232,13 @@ export function apply(ctx, config = {}) {
         // that is being produced, not the one before it.
         stats.renders += 1
         stats.lastAt = Date.now()
-        const model = buildDashboardModel(liveSource(), {
+        const model = buildDashboardModel(liveSource(exec), {
           sections: args.sections,
           width: num(args.width, limits.width),
           color: limits.color,
           lang: limits.lang,
           limit: { events: num(args.events, limits.events), salience: num(args.salience, limits.salience) },
+          scopeContext: callScope(exec, args),
           scope: args.scope ?? null,
           salienceScope: agentScope(exec),
           redaction: REDACTION_LEVELS.includes(String(args.redaction)) ? String(args.redaction) : redaction,
@@ -232,6 +268,9 @@ export function apply(ctx, config = {}) {
     name: 'ana_diagram',
     description: '把你的记忆渲染成可以直接粘进 Markdown 的文本图表：带连线的信念图（kind=memory-graph）、'
       + 'stack/tune/revert 事件构成的治理时间线（kind=strategy-timeline），或观测到的生命周期迁移（kind=lifecycle）。'
+      + 'memory-graph 的每个节点都带 scope（作用域短标签，如 project:ab12cd / global / session:xxxx）与 relation'
+      + '（current-project / other-project / global / current-session / other-session / unscoped），跨项目与未标注的节点会被标成 warn 并着色。'
+      + '默认只画你**召得回**的那些记录；传 allProjects: true 才画整份存储，此时会多一条告警。'
       + '默认 mermaid，也可用 D2 与纯 ASCII。产物自带版本化表头（kind、store 版本、脱敏策略），'
       + '所以一张旧图仍然可读。',
     parameters: {
@@ -241,7 +280,8 @@ export function apply(ctx, config = {}) {
       nodes: { type: 'integer', description: 'memory-graph 的节点上限。' },
       timeline: { type: 'integer', description: 'strategy-timeline / lifecycle 的事件上限。' },
       embed: { type: 'boolean', description: '包进带 provenance 表头的代码块（默认 true）。' },
-      scope: { type: 'json', description: '{"session","workspace","preset"}，把视图限制在你召得回的那些记录上。' },
+      allProjects: { type: 'boolean', description: '默认 false：只画当前项目 + 全局 + 当前会话。true 时画整份存储（其它项目的节点会被标为 other-project 并加告警）。' },
+      scope: { type: 'json', description: '{"session","workspace","preset"}（旧形状），在作用域过滤之上再收窄一层；新调用请用 allProjects。' },
       redaction: { type: 'string', enum: [...REDACTION_LEVELS], description: '产出文本的脱敏策略。默认 secrets。' },
     },
     output: output({
@@ -259,17 +299,18 @@ export function apply(ctx, config = {}) {
       warnings,
       auditSeq: { type: 'integer', description: 'viz.render 审计行的日志 seq；auditRenders 关闭时为 0。' },
     }),
-    execute: async (args) => {
+    execute: async (args, exec) => {
       try {
         stats.diagrams += 1
         stats.lastAt = Date.now()
-        const model = buildDiagramModel(liveSource(), {
+        const model = buildDiagramModel(liveSource(exec), {
           kind: args.kind,
           ids: args.ids,
           limit: {
             nodes: num(args.nodes, limits.diagramNodes),
             timeline: num(args.timeline, limits.timeline),
           },
+          scopeContext: callScope(exec, args),
           scope: args.scope ?? null,
           redaction: REDACTION_LEVELS.includes(String(args.redaction)) ? String(args.redaction) : redaction,
           lang: limits.lang,

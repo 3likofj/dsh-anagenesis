@@ -1,6 +1,6 @@
 {
   "name": "dsh-anagenesis-window",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "anagenesis 桌面可视化窗口 —— 为 dsh-anagenesis 提供一个桌面原生窗口（中文仪表盘、真实内联 SVG 关系图 / 生命周期 / 策略时间线），并在三个入口位置挂上它：DSH-better-sidebar 侧栏行、官方右侧侧边栏、对话/轨迹顶部栏。单行 web 插件：一个 Loader 行、一份 `dsh.client` 客户端半、所有入口共用同一个窗口。运行时探测 DSH-better-sidebar 是否在位，不在时降级且可逆、无残留。只读：绝不写入存储。",
   "private": false,
   "type": "module",
@@ -41,7 +41,7 @@
   "peerDependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
     "@deepseek-ai/dsh-tools": "^0.2.0-rc.2",
-    "dsh-anagenesis": "^0.1.0"
+    "dsh-anagenesis": "^0.2.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-tools": {

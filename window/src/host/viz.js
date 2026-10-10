@@ -473,11 +473,30 @@ function emptyDashboardModel(layer, root) {
     generatedAt: Date.now(),
     origin: 'mirror',
     store: { version: 0, schemaVersion: 0, memories: 0, live: 0, safeMode: false, stacks: [] },
+    scope: emptyScope(),
     sections: [],
     warnings: [`no anagenesis store at ${root} (expected a journal/ directory)`],
     limits: { events: 0, salience: 0, nodes: 0 },
     redaction: { level: layer.DEFAULT_REDACTION, note: '' },
     render: { width: 96, color: 'never' },
+  }
+}
+
+/**
+ * The `model.scope` block of a store that is not there.
+ *
+ * Deliberately the same shape a real model produces (`buildDashboardModel`), so
+ * the client renderer can read `model.scope.current.known` without a guard: an
+ * absent store is an *unknown* project, not an error and not a project.
+ * @returns {any}
+ */
+function emptyScope() {
+  return {
+    current: { known: false, projectId: null, label: '', namespace: null, tier: null, basis: null, session: null },
+    count: 0,
+    otherProjects: 0,
+    global: 0,
+    legacy: 0,
   }
 }
 
@@ -493,6 +512,7 @@ function emptyDiagramModel(layer, root, kind) {
     generatedAt: Date.now(),
     origin: 'mirror',
     store: { version: 0, schemaVersion: 0, memories: 0, live: 0, safeMode: false, stacks: [] },
+    scope: emptyScope(),
     nodes: [],
     edges: [],
     timeline: [],

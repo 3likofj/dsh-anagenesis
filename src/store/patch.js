@@ -21,6 +21,13 @@ export function emptyPatch() {
   return {
     /** @type {Record<string, any>} */ memorySet: {},
     /** @type {string[]} */ memoryUnset: [],
+    /**
+     * Known project fingerprints (`state.projects`). A map rather than a single
+     * value, because more than one project can be registered in one store — and
+     * inverted from the pre-state like every other collection, so adopting a
+     * project is as revertible as writing a memory.
+     * @type {Record<string, any>} */ projectSet: {},
+    /** @type {string[]} */ projectUnset: [],
     /** @type {Record<string, any>} */ strategySet: {},
     /** @type {string[]} */ strategyUnset: [],
     /** @type {Record<string, string[]|null>} */ stackSet: {},
@@ -79,6 +86,15 @@ export function applyPatch(state, patch) {
     for (const id of strategyUnset) delete strategies[id]
     for (const [id, doc] of Object.entries(strategySet)) strategies[id] = doc
     next.strategies = strategies
+  }
+
+  const projectUnset = patch.projectUnset ?? []
+  const projectSet = patch.projectSet ?? {}
+  if (projectUnset.length > 0 || Object.keys(projectSet).length > 0) {
+    const projects = { ...(state.projects ?? {}) }
+    for (const id of projectUnset) delete projects[id]
+    for (const [id, doc] of Object.entries(projectSet)) projects[id] = doc
+    next.projects = projects
   }
 
   const stackSet = patch.stackSet ?? {}
@@ -157,6 +173,15 @@ export function invertPatch(before, patch) {
     if (previous !== undefined) undo.strategySet[id] = previous
   }
 
+  for (const [id, previous] of Object.entries(patch.projectSet ?? {})) {
+    if (Object.hasOwn(before.projects ?? {}, id)) undo.projectSet[id] = /** @type {any} */ (before.projects)[id]
+    else undo.projectUnset.push(id)
+  }
+  for (const id of patch.projectUnset ?? []) {
+    const previous = (before.projects ?? {})[id]
+    if (previous !== undefined) undo.projectSet[id] = previous
+  }
+
   for (const scope of Object.keys(patch.stackSet ?? {})) {
     undo.stackSet[scope] = Object.hasOwn(before.stacks, scope) ? before.stacks[scope] : null
   }
@@ -208,10 +233,12 @@ export function mergePatches(...patches) {
   const out = emptyPatch()
   for (const patch of patches) {
     Object.assign(out.memorySet, patch.memorySet ?? {})
+    Object.assign(out.projectSet, patch.projectSet ?? {})
     Object.assign(out.strategySet, patch.strategySet ?? {})
     Object.assign(out.stackSet, patch.stackSet ?? {})
     Object.assign(out.paramsSet, patch.paramsSet ?? {})
     out.memoryUnset.push(...(patch.memoryUnset ?? []))
+    out.projectUnset.push(...(patch.projectUnset ?? []))
     out.strategyUnset.push(...(patch.strategyUnset ?? []))
     out.auditAppend.push(...(patch.auditAppend ?? []))
     if (patch.embedSet !== undefined && patch.embedSet !== null) out.embedSet = { ...patch.embedSet }
@@ -220,6 +247,7 @@ export function mergePatches(...patches) {
   }
   // A set later in the merge order cancels an earlier unset of the same id.
   out.memoryUnset = out.memoryUnset.filter((id) => !Object.hasOwn(out.memorySet, id))
+  out.projectUnset = out.projectUnset.filter((id) => !Object.hasOwn(out.projectSet, id))
   out.strategyUnset = out.strategyUnset.filter((id) => !Object.hasOwn(out.strategySet, id))
   return out
 }
@@ -231,6 +259,8 @@ export function mergePatches(...patches) {
 export function isEmptyPatch(patch) {
   return Object.keys(patch.memorySet ?? {}).length === 0
     && (patch.memoryUnset ?? []).length === 0
+    && Object.keys(patch.projectSet ?? {}).length === 0
+    && (patch.projectUnset ?? []).length === 0
     && Object.keys(patch.strategySet ?? {}).length === 0
     && (patch.strategyUnset ?? []).length === 0
     && Object.keys(patch.stackSet ?? {}).length === 0

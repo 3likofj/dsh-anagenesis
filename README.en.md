@@ -15,11 +15,99 @@
 
 ![The anagenesis desktop window — dashboard](assets/dashboard.png)
 
+## New in 0.2.0: memory is isolated per project, and the preset is a permission switch
+
+Two real defects drove this release: **one project's experience was recalled in another**, and **the model could
+write memories with no preset enabled**.
+
+| New | In one line | What you see |
+|---|---|---|
+| **Memory scope** | Every memory carries `global` / `project` (default) / `session`; recall returns the current project + global + the current session only | A new `scope` section in the dashboard: current project in cyan, **other projects in yellow**, global and legacy untagged at a glance |
+| **Project fingerprint** | `p1_<hash>` from the git remote (preferred) or the working directory — a pure function, stable across restarts, so two checkouts of one repo are one project | Directory changes, machine changes and new sessions cannot misidentify the project |
+| **Crossing needs authorization** | `crossProject: true` admits another project's memories, down-weighted and each one labelled "⚠ experience from another project — do not follow it blindly" | The block itself says what not to trust |
+| **Conflicts are downgraded** | When a foreign memory is semantically similar to a local one but opposite in content, its *effective* confidence is halved and the pulse says to trust the current environment | Only that answer's projection changes — **the store is never rewritten by a read** |
+| **Physical isolation** | Journal segments are per namespace (`journal-<ns>-*.jsonl`); global memory keeps its own files; a pre-0.2.0 store loads byte-for-byte | `node tools/scope-report.mjs` shows who owns how many records, in which file |
+| **The preset is the permission layer** | Write tools are registered **only while the `anagenesis` preset is on**; gears `passive` (read) / `assisted` (write) / `autonomous` (may self-schedule) | `ana_preset action="status"` is the authoritative answer to "what do I actually hold" |
+| **Checked at execution time** | `ctx.tools.guard()` plus each tool's own grant check: unregistered means unreachable, and a cached definition refuses once its grant is revoked | Prompt rules are the second line, never the only one |
+| **Status pulse** | Every step carries `<anagenesis-pulse>`: the project fingerprint, the gear, the tools in hand | The model can check "may I use this memory" itself |
+| **Session memories expire** | Session-tier writes get a 24h TTL by default; `ana_scope action="drop-session"` reclaims them in one revertible transaction | Scratch state cannot quietly become a permanent belief |
+| **New tools** | `ana_list` (list by scope), `ana_scope` (status / list / namespaces / retag / adopt / drop-session) | `retag` is revertible; widening a project memory to global needs an **explicit user authorization** |
+
+**Upgrading (breaking)**: the store migrates from schema v6 to v7 automatically. Records that carried a
+`workspace` are filed under the right project; the rest are marked `migrated-global` — still recallable, but
+down-weighted, and `ana_scope action="adopt"` files them back under the current project. Restart the desktop app
+so the new tool layering loads.
+
+## What makes it different
+
+- **Scope is a first-class citizen of the store**, not a filter applied at query time: writes, journal
+  partitioning, recall filtering, by-id reads and the visualization all share one namespace decision — so
+  "whose experience is this" holds at the **filesystem** level too.
+- **The preset is a permission switch, not a prompt bundle**: the gear decides whether a write tool *exists*,
+  not whether it *should* be used. The host offers no permission field on a tool definition, so we use the only
+  reliable lock there is: registered or not registered.
+- **One seq space plus declarative patches**: because the journal is *not* sharded per project, `revert(seq)`,
+  the audit trail and every handle a tool returns stay globally unique — isolation lives in the **files**,
+  revertibility in the **counter**.
+- **Physical isolation without breaking old data**: every namespace owns its live and archive segments, while the
+  global namespace keeps the original unprefixed names, so a store written before 0.2.0 loads unchanged.
+- **Falsifiable claims**: 95 core tests + 87 window tests + a 96-check boot sandbox that runs the real Cordis,
+  the real `defineTool` and the real preset registry — the real row code, not a mock of it.
+
 ## What it is, in three lines
 
 - **A self-contained store**: an append-only `journal/*.jsonl` plus atomic snapshots. It never calls, bridges or proxies an external memory service — no database, no cloud, no model calls.
 - **Memory as tools the agent drives** (17 `ana_*` tools): recall is shaped by **intent** (`orient`, `recall_precedent`, `avoid_mistake`, `reuse_procedure`, …), not by background extraction.
 - **It governs its own behaviour, too**: switchable injection stacks, bounded meta-level self-tuning, a monotonic guard, and a revertible history for all of it — with a trail you can audit.
+
+## Scope: a memory belongs to a project
+
+Every memory carries a scope tag, by default — there is nothing to configure:
+
+| Tier | When | Who can recall it |
+|---|---|---|
+| `global` | facts that hold everywhere (team conventions, tooling) | every project |
+| `project` (**the write default**) | conclusions that hold *here* | only the current project |
+| `session` | scratch state for one task; expires after 24h by default | only the session that wrote it |
+
+- The **project fingerprint** (`p1_<hash>`) comes from the git remote (preferred) or the canonicalised
+  working directory: a pure function, stable across restarts. Two checkouts of the same repository are
+  the *same* project.
+- **Recall returns only the current project + global + the current session.** Crossing projects needs
+  an explicit `crossProject: true`: those hits are down-weighted and each one is labelled
+  “⚠ experience from another project — do not follow it blindly”.
+- **Conflicts are called out.** When another project's memory is semantically similar to a local one
+  but opposite in content, its *effective* confidence is halved for that answer and both the block and
+  the status pulse say “ignore the historical experience; trust the current environment”. Only the
+  projection changes — a read never rewrites the record it read.
+- **Storage is partitioned as well**: events are written per namespace (`journal-<ns>-*.jsonl`), global
+  memory keeps its own unprefixed files, and a pre-isolation store still loads unchanged (those records
+  are marked `migrated-global` and down-weighted; `ana_scope action="adopt"` files them back under the
+  current project).
+- Inspect a store: `node tools/scope-report.mjs` (read-only: namespaces, known projects, files, gears).
+
+## The preset is a permission switch, not a suggestion
+
+Installing the plugin gives the model **eyes only**: what gets registered is the read tier
+(`ana_recall`, `ana_list`, `ana_audit`, `ana_dashboard`, `ana_diagram`, `ana_window`, plus the
+inspection actions of `ana_scope` / `ana_preset` / `ana_strategy` / `ana_tune`). **The write-tier tools
+exist only while the `anagenesis` preset is enabled** — not discouraged, simply never registered, so
+the model cannot see them.
+
+| Gear | Write tools | Extra |
+|---|---|---|
+| `passive` | none registered | read, audit, visualize, inspect |
+| `assisted` (preset default) | registered | every write is an explicit tool call by the agent |
+| `autonomous` | registered | the plugin may schedule the stack (a reported failure switches to `debug`) and crystallize repeatedly-cited drafts — both audited, both with a seq |
+
+- The gear lives in the preset config (`gear:`); at runtime `ana_preset action="gear"` reports it and can
+  lower it. **Raising it needs the host** — an agent cannot widen its own permissions.
+- Switching and unloading **roll back exactly**: dropping to `passive` unregisters each write tool;
+  unloading the preset returns the tool set to the read tier.
+- The permission check runs **at execution time** (`ctx.tools.guard()` plus each gated tool's own
+  `assertGrant`), so a cached definition refuses to run once its grant is revoked. Prompt rules are the
+  second line of defence, never the only one.
+- The agent sees an `<anagenesis-pulse>` every step: current project, gear, and the tools it holds.
 
 ## How it differs from a typical "automatic memory" plugin
 
@@ -27,6 +115,8 @@
 |---|---|---|
 | Who decides what is stored | Background extraction; the agent is not involved | **The agent decides, with tools**: `ana_remember`, `ana_promote`, `ana_split`, `ana_rethink`, `ana_forget` |
 | How recall works | Keyword or vector similarity | **Intent-driven**: 7 intents expand into kinds, states, confidence floor, weights, granularity, token budget, diversity |
+| Who can see it | One shared store for every project | **Isolated per project**: writes default to the current project; crossing needs explicit authorization and is labelled |
+| Who can write it | Anything installed can write | **The preset is the permission layer**: without it the write tools do not exist; gears `passive` / `assisted` / `autonomous` |
 | Injection strategy | Fixed | **Switchable at runtime** (6 named stacks), and **stacks are per scope** — one agent switching does not touch another |
 | What a change costs | Usually irreversible | **Every transaction returns an inverse**; inverses are journalled next to the forward patch, so **reverts survive a restart** |
 | Self-tuning | None | **The meta layer tunes itself from feedback**: parameter envelope + UCB1 + audit + evaluation + rollback |
@@ -67,15 +157,23 @@ dsh plugin --profile desktop add link:<absolute path to this repo>/window   # op
 4. For a live view in a real terminal: `node tools/viz-watch.mjs --watch` (read-only, separate process).
 5. For the desktop window: install the second package, restart, then call `ana_window` or click an entrance.
 
-## Capability map (17 tools)
+## Capability map (19 tools, layered by permission)
+
+**Read tier — installed with the plugin**
 
 | Group | Tools | What they do |
 |---|---|---|
-| Recall & feedback | `ana_recall` · `ana_feedback` | Retrieve by intent; tell the system whether what it injected was actually useful |
-| Writing & lifecycle | `ana_remember` · `ana_promote` · `ana_demote` · `ana_lock` · `ana_expire` · `ana_forget` | `draft → active → verified → locked`, plus demote / expire / delete (deletion leaves an auditable tombstone) |
-| Structure | `ana_link` · `ana_split` · `ana_rethink` | Link beliefs; split an overloaded memory into narrower ones; **counterfactual rethink** (what follows if the premise is false) |
-| Governance | `ana_strategy` · `ana_tune` · `ana_audit` | Switch or derive strategies; meta-level tuning and rollback; inspect state, journal, audit trail and health |
-| Visualization | `ana_dashboard` · `ana_diagram` · `ana_window` | Dashboard, text diagrams, desktop window (each of the last two belongs to its own row — no row, no tool) |
+| Recall | `ana_recall` · `ana_list` | Retrieve by intent (current project + global + current session by default); list what the store holds, with scope labels |
+| Inspection | `ana_audit` · `ana_scope` · `ana_preset` · `ana_strategy` · `ana_tune` | Status / journal / audit / one memory; the scope report; gear and permissions; the strategy roster; tuning metrics |
+| Visualization | `ana_dashboard` · `ana_diagram` · `ana_window` | TUI dashboard (with a scope section), text diagrams, desktop window |
+
+**Write tier — only while the `anagenesis` preset is enabled**
+
+| Group | Tools | What they do |
+|---|---|---|
+| Write & lifecycle | `ana_remember` · `ana_promote` · `ana_demote` · `ana_lock` · `ana_expire` · `ana_forget` | Writes default to the **current project**; `draft → active → verified → locked`, or demote / expire / forget (a forget leaves an auditable tombstone) |
+| Structure | `ana_link` · `ana_split` · `ana_rethink` | Links; split an overloaded memory (children inherit the parent's scope); counterfactual re-reasoning |
+| Feedback & correction | `ana_feedback` · `ana_scope action="retag"/"adopt"` · the mutating actions of `ana_strategy`/`ana_tune` | Report actual use; re-file a scope (revertible); switch stacks / tune the meta layer (`admin` gear) |
 
 ## Injection strategy: which brain for which moment
 
@@ -128,11 +226,16 @@ boundary is **enforced** (8 monotonic invariants plus the `safeMode` freeze), no
 
 ```
 $DSH_HOME/anagenesis/
-  journal/journal-000001.jsonl     append-only event log (seq / type / patch / undo)
-  journal/archive-<seq>.jsonl      folded archives (the `undo` is kept)
-  journal/checkpoint-<seq>.json    frozen state at a boundary
-  snapshot.json                    atomic startup cache
+  journal/journal-000001.jsonl          append-only event log (the global namespace, original naming)
+  journal/journal-<ns>-000001.jsonl     one segment per project/session namespace (physical isolation)
+  journal/archive-<ns>-<seq>.jsonl      folded archives, per namespace (the `undo` is kept)
+  journal/checkpoint-<seq>.json         frozen state at a boundary (one cache for the whole store)
+  snapshot.json                         atomic startup cache
 ```
+
+- **Memory is partitioned by namespace in the filesystem**, not only filtered at query time:
+  `project:<fingerprint>` and `session:<id>` events live in segments named after them, while global
+  memory keeps the unprefixed `journal-*.jsonl`.
 
 - **Entirely local**: no network, no model download, no model calls, no subprocesses.
 - **Zero runtime dependencies**: retrieval is a built-in BM25 inverted index plus a deterministic hashing embedder (192 dimensions). A real semantic backend can be injected at runtime.

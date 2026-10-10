@@ -37,6 +37,17 @@ export const META = Object.freeze({
 export const DEFAULT_PRESET_STACK = Object.freeze(['guard', 'exploit'])
 
 /**
+ * The gear the preset boots into.
+ *
+ * `assisted` rather than `autonomous` on purpose: autonomous adds self-scheduled
+ * stack changes and automatic crystallization, which is a *delegation* the user
+ * makes, not a default the plugin picks. `passive` is the other honest boot
+ * value for a cautious deployment — the preset is then active (pulse, stack,
+ * recall) but every write tool stays unregistered.
+ */
+export const DEFAULT_GEAR = 'assisted'
+
+/**
  * The optional visualization-window capability, as a fact the preset publishes.
  *
  * `mountedByPreset: false` is the load-bearing field and it is not a default that
@@ -118,15 +129,21 @@ export function baseToolRows(opts = {}) {
 }
 
 /**
- * The anagenesis rows of the preset: service, tools, guard, visualization, and the
- * bind row.
+ * The anagenesis rows of the preset: service, read tools, **gated write tools**,
+ * guard, visualization, and the bind row.
+ *
+ * `anagenesis-tools-gated` is the row that turns the preset into a permission
+ * layer: it grants a scoped authorization and registers the write-tier tools
+ * only while that grant is live. Without this row — i.e. without the preset —
+ * the write tools do not exist for the model at all, which is the structural fix
+ * for "the model wrote memories with no preset enabled".
  *
  * The visualization row is part of the composition so a preset session can *call*
  * `ana_dashboard` / `ana_diagram` — but it is not "on" in any stronger sense:
  * the row registers two read-only tools and starts no timers, no watcher and no
  * writes of its own. A host that wants visualization gone disables this single
  * row; the memory layer never notices.
- * @param {{ stack?: string[], tokenBudget?: number }} [opts]
+ * @param {{ stack?: string[], tokenBudget?: number, gear?: string }} [opts]
  */
 export function anagenesisRows(opts = {}) {
   return [
@@ -135,6 +152,15 @@ export function anagenesisRows(opts = {}) {
     // rootDir, so both rows share one writer instead of racing on the journal.
     { id: 'anagenesis-core', name: 'dsh-anagenesis' },
     { id: 'anagenesis-tools', name: 'dsh-anagenesis/tools' },
+    {
+      id: 'anagenesis-tools-gated',
+      name: 'dsh-anagenesis/tools-gated',
+      config: {
+        gear: opts.gear ?? DEFAULT_GEAR,
+        scopeKey: `preset:${PRESET_ID}`,
+        reason: 'the anagenesis preset was mounted',
+      },
+    },
     { id: 'anagenesis-guard', name: 'dsh-anagenesis/guard' },
     { id: 'anagenesis-viz', name: 'dsh-anagenesis/viz' },
     {
@@ -143,6 +169,7 @@ export function anagenesisRows(opts = {}) {
       config: {
         stack: opts.stack ?? [...DEFAULT_PRESET_STACK],
         tokenBudget: opts.tokenBudget ?? 1600,
+        gear: opts.gear ?? DEFAULT_GEAR,
       },
     },
   ]
@@ -150,7 +177,7 @@ export function anagenesisRows(opts = {}) {
 
 /**
  * Build the preset definition handed to `agentPresets.register()`.
- * @param {{ id?: string, platform?: string, stack?: string[], tokenBudget?: number, extraPlugins?: any[] }} [opts]
+ * @param {{ id?: string, platform?: string, stack?: string[], tokenBudget?: number, gear?: string, extraPlugins?: any[] }} [opts]
  * @returns {{ id: string, name: string, description: string, order: number, plugins: any[] }}
  */
 export function anagenesisPreset(opts = {}) {

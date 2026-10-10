@@ -8,8 +8,9 @@
  */
 
 import { clamp, ulid } from '../util.js'
+import { fingerprintProject, namespaceOf, normalizeTier, scopeTag } from '../scope/project.js'
 
-export const SCHEMA_VERSION = 6
+export const SCHEMA_VERSION = 7
 
 /**
  * Which vector backend produced the stored embeddings.
@@ -94,6 +95,11 @@ export function canTransition(from, to, opts = {}) {
  * @param {(text: string) => number[]} env.embed
  * @param {string} [env.sessionId]
  * @param {string} [env.presetId]
+ * @param {{ tier?: string, projectId?: string|null, workspace?: string|null, profile?: string|null,
+ *   origin?: string, sessionTtlMs?: number|null }} [env.defaultScope]
+ *   The scope a write lands in when the caller did not name one. The service passes
+ *   `{ tier: 'project', projectId: <current fingerprint> }`, so "no explicit scope"
+ *   now means "this project" instead of "everyone".
  * @returns {MemoryRecord}
  */
 export function createMemory(spec, env) {
@@ -103,6 +109,7 @@ export function createMemory(spec, env) {
   const confidence = clamp(spec.confidence ?? 0.5, 0, 1)
   const ttlMs = spec.ttlMs ?? null
   const text = `${spec.subject ?? ''}\n${spec.body ?? ''}`
+  const scope = resolveScope(spec.scope, env)
   return {
     id: spec.id ?? ulid('mem', { time: now }),
     kind,
@@ -117,12 +124,7 @@ export function createMemory(spec, env) {
     state,
     confidence,
     salience: clamp(spec.salience ?? 0.5, 0, 1),
-    scope: {
-      global: spec.scope?.global ?? true,
-      session: spec.scope?.session ?? env.sessionId ?? null,
-      workspace: spec.scope?.workspace ?? null,
-      preset: spec.scope?.preset ?? env.presetId ?? null,
-    },
+    scope,
     provenance: {
       source: spec.provenance?.source ?? 'agent',
       author: spec.provenance?.author ?? null,
@@ -132,7 +134,15 @@ export function createMemory(spec, env) {
     },
     createdAt: now,
     updatedAt: now,
-    expiresAt: ttlMs === null ? null : now + Math.max(0, ttlMs),
+    // Session memories are the one tier that is *supposed* to die: a temporary
+    // task's working notes must not outlive the task. A TTL is attached at write
+    // time unless the caller set one, and the ordinary expiry sweep enforces it —
+    // so "session scope disappears" is the same revertible transaction as any
+    // other expiry, not a special cleanup path.
+    expiresAt: ttlMs !== null ? now + Math.max(0, ttlMs)
+      : scope.tier === 'session' && Number(env.defaultScope?.sessionTtlMs ?? 0) > 0
+        ? now + Number(env.defaultScope?.sessionTtlMs)
+        : null,
     supersedes: (spec.supersedes ?? []).slice(0, 32),
     supersededBy: spec.supersededBy ?? null,
     parentId: spec.parentId ?? null,
@@ -144,6 +154,38 @@ export function createMemory(spec, env) {
     embedding: env.embed(text).slice(),
     schemaVersion: SCHEMA_VERSION,
   }
+}
+
+/**
+ * The single place a record's scope tag is produced.
+ *
+ * 写入路径**只**通过这里生成标签，所以"每条记忆都必须带 scope 与 project_id"是
+ * 结构性的：没有办法写出一条没有 tier 的记录。旧字段（`global` / `workspace` /
+ * `preset`）继续与 `tier` 保持同步，因为窗口侧与旧工具仍在读它们。
+ * @param {any} spec
+ * @param {any} env
+ * @returns {{ tier: string, projectId: string|null, session: string|null, workspace: string|null,
+ *   preset: string|null, profile: string|null, global: boolean, origin: string }}
+ */
+function resolveScope(spec, env) {
+  const explicit = spec ?? {}
+  const fallback = env.defaultScope ?? { tier: 'global', origin: 'legacy-default' }
+  const asked = explicit.tier !== undefined || explicit.projectId !== undefined
+    ? { tier: explicit.tier, projectId: explicit.projectId, origin: 'explicit' }
+    : {}
+  return scopeTag({
+    tier: explicit.tier ?? fallback.tier,
+    projectId: explicit.projectId ?? explicit.project_id ?? fallback.projectId ?? null,
+    // `session` is the shape a *record's* scope carries; `sessionId` is the shape
+    // the service's `writeScope()` returns. Both are accepted because dropping
+    // either one silently degrades a session-scoped write into a project one —
+    // and the caller would only notice by reading the scope tag afterwards.
+    sessionId: explicit.session ?? explicit.sessionId ?? env.sessionId ?? null,
+    presetId: explicit.preset ?? env.presetId ?? null,
+    workspace: explicit.workspace ?? fallback.workspace ?? null,
+    profile: explicit.profile ?? fallback.profile ?? null,
+    origin: asked.origin ?? fallback.origin ?? 'default',
+  })
 }
 
 /**
@@ -160,7 +202,14 @@ export function createMemory(spec, env) {
  * @property {number} salience
  * @property {Record<string, number>} salienceByScope per-caller-scope salience;
  *   a scope with no entry inherits the global `salience` (see `effectiveSalience`)
- * @property {{ global: boolean, session: string|null, workspace: string|null, preset: string|null }} scope
+ * @property {{ tier: 'global'|'project'|'session'|'unscoped', projectId: string|null,
+ *   session: string|null, workspace: string|null, preset: string|null, profile: string|null,
+ *   global: boolean, origin: string }} scope
+ *   `tier` is the authority; `global`/`workspace`/`preset` are kept in sync for
+ *   readers that predate scope isolation. `origin` records *how* the tier was
+ *   decided (`explicit` / `default` / `migrated-workspace` / `legacy-default`),
+ *   which is what lets recall down-weight records that were written before
+ *   isolation existed instead of pretending they were always tagged.
  * @property {{ source: string, author: string|null, taskId: string|null, evidence: string[], derivedFrom: string[] }} provenance
  * @property {number} createdAt
  * @property {number} updatedAt
@@ -180,6 +229,12 @@ export function createMemory(spec, env) {
  * @property {number} createdAt
  * @property {number} updatedAt
  * @property {Record<string, MemoryRecord>} memories
+ * @property {Record<string, { id: string, kind: 'repo'|'path', root: string, remote: string,
+ *   label: string, firstSeenAt: number, lastSeenAt: number }>} projects
+ *   Known project fingerprints. This exists so a human (and the visualization
+ *   layer) can tell "another project" apart by name instead of by hash, and so
+ *   `ana_scope action=list` can offer the ids that `crossProject: true` may be
+ *   authorized against. Registration is a normal, invertible `projectSet` patch.
  * @property {Record<string, any>} strategies
  * @property {Record<string, string[]>} stacks
  * @property {Record<string, Record<string, number|string|boolean>>} params
@@ -239,6 +294,7 @@ export function emptyState(now = Date.now()) {
     createdAt: now,
     updatedAt: now,
     memories: {},
+    projects: {},
     strategies: {},
     stacks: { global: ['guard', 'exploit'] },
     params: { global: {} },
@@ -262,7 +318,7 @@ export const AUDIT_CAP = 4000
 export function migrateState(raw, now = Date.now()) {
   let state = normalizeRoot(raw, now)
   /** @type {Record<number, (s: any, now: number) => any>} */
-  const steps = { 1: v1ToV2, 2: v2ToV3, 3: v3ToV4, 4: v4ToV5, 5: v5ToV6 }
+  const steps = { 1: v1ToV2, 2: v2ToV3, 3: v3ToV4, 4: v4ToV5, 5: v5ToV6, 6: v6ToV7 }
   let guard = 0
   while (state.schemaVersion < SCHEMA_VERSION && guard++ < 16) {
     const step = steps[state.schemaVersion]
@@ -270,7 +326,25 @@ export function migrateState(raw, now = Date.now()) {
     state = step(state, now)
   }
   state.schemaVersion = SCHEMA_VERSION
+  // Records can also arrive *without* a scope tag through journal replay: a store
+  // that never flushed a snapshot (replay-only boot) rebuilds records from
+  // pre-upgrade events, and the document-level chain above would then never see
+  // them. One cheap pass repairs those in place — and only when there is
+  // something to repair, so the common path pays for one property check per
+  // record and nothing else.
+  if (hasUntaggedRecords(state)) state = repairRecordScopes(state, now)
   return state
+}
+
+/**
+ * @param {any} state
+ * @returns {boolean}
+ */
+export function hasUntaggedRecords(state) {
+  for (const record of Object.values(state?.memories ?? {})) {
+    if (typeof (/** @type {any} */ (record))?.scope?.tier !== 'string') return true
+  }
+  return false
 }
 
 /**
@@ -287,6 +361,7 @@ function normalizeRoot(raw, now) {
     ...raw,
     schemaVersion: version,
     memories: raw.memories ?? {},
+    projects: raw.projects ?? {},
     audit: Array.isArray(raw.audit) ? raw.audit.slice(-AUDIT_CAP) : [],
     stats: { ...base.stats, ...(raw.stats ?? {}) },
     tuning: normalizeTuning(raw.tuning),
@@ -379,6 +454,114 @@ function v4ToV5(state) {
  */
 function v5ToV6(state) {
   return { ...state, schemaVersion: 6, tuning: normalizeTuning(state.tuning) }
+}
+
+/**
+ * v6 → v7: **every record gets an explicit scope**.
+ *
+ * 这一版回答的是"这条记忆属于谁"。旧记录没有 `tier`，而旧写入路径的默认值是
+ * `scope.global = true` —— 也就是说，除了少数显式限定了 workspace 的记录，
+ * 历史上写的每一条都被当成全局记忆。迁移不能凭空发明归属，但也不必假装它们
+ * 一直如此：
+ *
+ *   - 带 `workspace` 的记录 → 按那个路径算项目指纹，归入**正确的项目**
+ *     （同一台机器上，那个路径当时就是那个项目，这是可复核的事实）；
+ *   - 其余 `global: true` 的记录 → `tier: 'global'` + `origin: 'migrated-global'`。
+ *     它们继续可召回（不丢数据），但召回打分按"迁移遗留"显著降权，并在注入块里
+ *     逐条标注 —— 因为"当时默认写成全局"不等于"这条经验真的跨项目通用"。
+ *   - 带 `session` 的记录 → 会话级。
+ *
+ * 迁移是纯函数、幂等，并且**不删除任何东西**：唯一的变化是加上一层标签，
+ * 而标签本身随着记录一起进日志，因此 `revert(seq)` 一样能把它撤回去。
+ * @param {any} state
+ * @param {number} now
+ */
+function v6ToV7(state, now) {
+  return { ...repairRecordScopes(state, now), schemaVersion: 7 }
+}
+
+/**
+ * 给所有缺 `tier` 的记录补上作用域标签。`migrateState` 在迁移链之后也会调用它，
+ * 用来接住"只有日志、没有快照"的重放路径。
+ * @param {any} state
+ * @param {number} now
+ * @returns {any}
+ */
+export function repairRecordScopes(state, now = Date.now()) {
+  /** @type {Map<string, any>} */
+  const byWorkspace = new Map()
+  /** @type {Record<string, any>} */
+  const projects = { ...(state.projects ?? {}) }
+  const memories = { ...(state.memories ?? {}) }
+  let repaired = 0
+  for (const [id, raw] of Object.entries(memories)) {
+    const record = /** @type {any} */ (raw)
+    if (typeof record?.scope?.tier === 'string') continue
+    const scope = migrateRecordScope(record, byWorkspace, projects, now)
+    memories[id] = { ...record, scope, schemaVersion: SCHEMA_VERSION }
+    repaired += 1
+  }
+  if (repaired === 0) return state
+  return { ...state, memories, projects }
+}
+
+/**
+ * @param {any} record
+ * @param {Map<string, any>} cache
+ * @param {Record<string, any>} projects
+ * @param {number} now
+ * @returns {any}
+ */
+function migrateRecordScope(record, cache, projects, now) {
+  const legacy = record?.scope ?? {}
+  if (typeof legacy.session === 'string' && legacy.session !== '') {
+    return scopeTag({ tier: 'session', sessionId: legacy.session, presetId: legacy.preset, workspace: legacy.workspace, origin: 'migrated-session' })
+  }
+  if (typeof legacy.workspace === 'string' && legacy.workspace.trim() !== '') {
+    let identity = cache.get(legacy.workspace)
+    if (identity === undefined) {
+      identity = fingerprintProject({ cwd: legacy.workspace })
+      cache.set(legacy.workspace, identity)
+      projects[identity.id] ??= {
+        id: identity.id,
+        kind: identity.kind,
+        root: identity.root,
+        remote: identity.remote,
+        label: identity.label,
+        firstSeenAt: Number(record.createdAt) || now,
+        lastSeenAt: now,
+      }
+    }
+    return scopeTag({
+      tier: 'project',
+      projectId: identity.id,
+      presetId: legacy.preset,
+      workspace: identity.root,
+      origin: 'migrated-workspace',
+    })
+  }
+  return scopeTag({ tier: 'global', presetId: legacy.preset, origin: 'migrated-global' })
+}
+
+/**
+ * 一条记录落在哪个命名空间（日志分段、可视化分组、`ana_scope` 都用它）。
+ * @param {any} record
+ * @returns {string}
+ */
+export function recordNamespace(record) {
+  return namespaceOf(record?.scope ?? {})
+}
+
+/**
+ * 这条记录是否写于作用域隔离之前。`origin` 是唯一判据 —— 猜内容是不诚实的，
+ * 而"迁移时它没有归属信息"是有记录的。
+ * @param {any} record
+ * @returns {boolean}
+ */
+export function isLegacyUnscoped(record) {
+  const scope = record?.scope
+  if (scope?.tier !== 'global') return false
+  return scope.origin === 'migrated-global' || scope.origin === 'legacy-default'
 }
 
 /**

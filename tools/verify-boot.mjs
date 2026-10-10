@@ -71,10 +71,26 @@ const DEFAULT_ASAR = 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\DeepSe
 /** The three host packages the plugin's adapter rows import (plus their closure). */
 const ROOT_PACKAGES = ['@deepseek-ai/cordis', '@deepseek-ai/dsh-tools', '@deepseek-ai/schemastery', 'js-yaml']
 
-/** The 14 agent-facing tools `anagenesis-tools` must compile with the real defineTool. */
+/**
+ * The tools `anagenesis-tools` (the always-on row) must compile with the real
+ * `defineTool`. It is the **read tier only** — every one of these can be called
+ * without a preset, and none of them writes a memory. The write tier is separate
+ * on purpose (`GATED_TOOLS` below): it is registered by `tools/gated.js` inside a
+ * live preset grant, which is the fix for "memories were written with no preset
+ * enabled".
+ */
 const EXPECTED_TOOLS = [
-  'ana_recall', 'ana_remember', 'ana_promote', 'ana_demote', 'ana_lock', 'ana_expire', 'ana_split',
-  'ana_rethink', 'ana_forget', 'ana_strategy', 'ana_tune', 'ana_feedback', 'ana_audit', 'ana_link',
+  'ana_recall', 'ana_list', 'ana_audit', 'ana_scope', 'ana_preset', 'ana_strategy', 'ana_tune',
+]
+
+/**
+ * The write tier, registered only by `dsh-anagenesis/tools-gated`. This list is
+ * asserted to be *absent* before the preset mounts and *present* after — the
+ * boot-time version of the permission test.
+ */
+const GATED_TOOLS = [
+  'ana_remember', 'ana_promote', 'ana_demote', 'ana_lock', 'ana_expire', 'ana_split',
+  'ana_rethink', 'ana_forget', 'ana_feedback', 'ana_link',
 ]
 
 /**
@@ -734,7 +750,7 @@ async function runChecks(paths) {
   check('anagenesis-core: store opened its own journal inside the sandbox',
     resolve(service.store.rootDir) === resolve(storeDir) && existsSync(join(storeDir, 'journal')))
   const status = service.status()
-  check('anagenesis-core: status() reports the live store', status.schemaVersion === 6 && status.rootDir === service.rootDir,
+  check('anagenesis-core: status() reports the live store', status.schemaVersion === 7 && status.rootDir === service.rootDir,
     `schemaVersion=${status.schemaVersion} stacks=${JSON.stringify(status.stacks?.global)}`)
   check('anagenesis-core: status() exposes the journal layout across the adapter boundary',
     typeof status.journal?.live === 'number' && typeof status.journal?.archives === 'number'
@@ -797,19 +813,34 @@ async function runChecks(paths) {
   })(), 'schema 默认值必须当作"没配"；旧存储更丰富时必须胜出 —— 否则用户会看到一个 0 条记忆的空存储')
 
   // ── 2. anagenesis-guard ─────────────────────────────────────────────────────
+  // How many guards exist before this row mounts: the core row installs a tier
+  // guard of its own as a fallback, so a profile that disables the guard row still
+  // refuses writes with no grant. This row adds exactly two more.
+  const guardsBeforeGuardRow = guards.length
   const guard = ctx.plugin({ name: guardRow.name, inject: guardRow.inject, apply: guardRow.apply }, {})
   const guardResult = await settle(guard)
   check('anagenesis-guard: starts with tools+anagenesis injected',
     guardResult.error === undefined && guard.state === ACTIVE,
     guardResult.error === undefined ? `state=${guard.state}` : `${guardResult.error?.name}: ${guardResult.error?.message}`)
-  check('anagenesis-guard: installed exactly one guard', guards.length === 1, `guards=${guards.length}`)
-  check('anagenesis-guard: logged its install line', logged('anagenesis-guard: monotonic tool guard installed'))
+  check('anagenesis-guard: installed exactly two guards (arguments + tier)', guards.length === guardsBeforeGuardRow + 2,
+    `guards=${guards.length} (${guardsBeforeGuardRow} before the row)`)
+  check('anagenesis-guard: logged its install line', logged('anagenesis-guard: monotonic tool guard + tier permission guard installed'))
 
-  if (guards.length === 1) {
-    const installed = guards[0]
+  // Identify the guards by behaviour rather than by index: the core row's fallback
+  // tier guard is registered before this row's, so slot 0 is not the argument
+  // guard. A guard that *admits* a well-formed write and *denies* the same call
+  // without a reason is the argument guard; a guard that denies a write with no
+  // preset grant is the tier guard. Naming them by what they do keeps this check
+  // honest even if the registration order changes again.
+  const wellFormedForget = { name: 'ana_forget', args: { ids: [], reason: 'because it is stale' } }
+  const argumentGuard = guards.find((installed) => installed(wellFormedForget) === undefined)
+  const tierGuard = guards.find((installed) => typeof installed({ name: 'ana_remember', arguments: { subject: 'x', body: 'y' } }) === 'string')
+
+  if (argumentGuard !== undefined) {
+    const installed = argumentGuard
     const allow = installed({ name: 'ana_recall', args: { intent: 'orient' } })
     const deny = installed({ name: 'ana_forget', args: { ids: [], reason: 'x' } })
-    const allow2 = installed({ name: 'ana_forget', args: { ids: [], reason: 'because it is stale' } })
+    const allow2 = installed(wellFormedForget)
     const unrelated = installed({ name: 'some_other_plugin_tool', args: { ids: new Array(999).fill('x') } })
     check('anagenesis-guard: the guard admits a legal ana_* call', allow === undefined, `returned ${JSON.stringify(allow)}`)
     check('anagenesis-guard: the guard denies an illegal ana_* call',
@@ -818,6 +849,26 @@ async function runChecks(paths) {
       `returned ${JSON.stringify(allow2)}`)
     check('anagenesis-guard: the guard never touches another plugin\'s tools', unrelated === undefined,
       `returned ${JSON.stringify(unrelated)}`)
+  } else {
+    check('anagenesis-guard: an argument guard is installed', false, 'no guard admitted a well-formed ana_forget')
+  }
+
+  // The tier guard is the second, independent layer: with no preset grant in this
+  // sandbox it refuses a write-tier call and admits a read-tier one, whatever the
+  // argument guard thinks.
+  if (tierGuard !== undefined) {
+    const write = tierGuard({ name: 'ana_remember', arguments: { subject: 'x', body: 'y' } })
+    const read = tierGuard({ name: 'ana_recall', arguments: { intent: 'orient' } })
+    const admin = tierGuard({ name: 'ana_strategy', arguments: { action: 'switch', id: 'debug' } })
+    const inspect = tierGuard({ name: 'ana_strategy', arguments: { action: 'list' } })
+    check('anagenesis-guard: the tier guard refuses a write while no preset grant exists',
+      typeof write === 'string' && /preset is not active/.test(write), `returned ${JSON.stringify(write)?.slice(0, 110)}`)
+    check('anagenesis-guard: the tier guard refuses an admin action while no preset grant exists',
+      typeof admin === 'string' && admin.length > 0, `returned ${JSON.stringify(admin)?.slice(0, 110)}`)
+    check('anagenesis-guard: the tier guard always admits the read tier', read === undefined && inspect === undefined,
+      `read=${JSON.stringify(read)} inspect=${JSON.stringify(inspect)}`)
+  } else {
+    check('anagenesis-guard: a tier guard is installed', false, 'no guard refused a write-tier call without a grant')
   }
 
   // ── 3. anagenesis-tools (REAL defineTool) ───────────────────────────────────
@@ -830,9 +881,12 @@ async function runChecks(paths) {
   const names = registered.map((row) => row.name)
   const missingTools = EXPECTED_TOOLS.filter((name) => !names.includes(name))
   const extraTools = names.filter((name) => !EXPECTED_TOOLS.includes(name))
-  check('anagenesis-tools: all 14 tools compiled through the real defineTool',
-    missingTools.length === 0 && extraTools.length === 0 && names.length === 14,
+  check('anagenesis-tools: the read tier compiles through the real defineTool, and nothing else does',
+    missingTools.length === 0 && extraTools.length === 0 && names.length === EXPECTED_TOOLS.length,
     `registered=${names.length}${missingTools.length ? ` missing=${missingTools.join(',')}` : ''}${extraTools.length ? ` unexpected=${extraTools.join(',')}` : ''}`)
+  check('anagenesis-tools: the write tier is NOT registered without the preset',
+    GATED_TOOLS.every((name) => !names.includes(name)),
+    `leaked=${GATED_TOOLS.filter((name) => names.includes(name)).join(',') || 'none'}`)
   check('anagenesis-tools: every definition carries a compiled object schema',
     registered.every((row) => row.definition?.parameters?.type === 'object'
       && Object.keys(row.definition.parameters.properties ?? {}).length > 0),
@@ -842,20 +896,53 @@ async function runChecks(paths) {
       === JSON.stringify(['orient', 'recall_fact', 'recall_precedent', 'avoid_mistake', 'reuse_procedure', 'verify', 'contrast']),
     'ana_recall.parameters.properties.intent.enum must be the 7 recall intents')
   check('anagenesis-tools: every output schema is a flat closed object',
-    registered.every((row) => row.definition?.output?.schema?.type === 'object')
-      && registered.filter((row) => row.definition?.output?.schema?.additionalProperties === false).length >= 14,
-    `closed=${registered.filter((row) => row.definition?.output?.schema?.additionalProperties === false).length}/14`)
+    registered.every((row) => row.definition?.output?.schema?.type === 'object'
+      && row.definition?.output?.schema?.additionalProperties === false),
+    `closed=${registered.filter((row) => row.definition?.output?.schema?.additionalProperties === false).length}/${registered.length}`)
   check('anagenesis-tools: every definition exposes an executable handler',
     registered.every((row) => typeof row.definition?.execute === 'function'))
-  check('anagenesis-tools: logged its registration line', logged('anagenesis-tools: registered ana_* tools'))
+  check('anagenesis-tools: logged its registration line', logged('anagenesis-tools: registered'))
+
+  // ── 3a. the preset path: the gated write row + the grant that authorizes it ─
+  //
+  // The write tier exists only here. Mounting these two rows is exactly what
+  // enabling the `anagenesis` preset does on a real host, and the two checks
+  // around it are the boot-time form of the permission suite: absent before,
+  // present after, withdrawn again when the preset unloads.
+  const gatedModule = await import(new URL('../src/tools/gated.js', import.meta.url).href)
+  const gated = ctx.plugin({ name: gatedModule.name, inject: gatedModule.inject, apply: gatedModule.apply }, { gear: 'autonomous', scopeKey: 'preset:anagenesis' })
+  const gatedResult = await settle(gated)
+  check('anagenesis-tools-gated: starts with tools+anagenesis injected',
+    gatedResult.error === undefined && gated.state === ACTIVE,
+    gatedResult.error === undefined ? `state=${gated.state}` : `${gatedResult.error?.name}: ${gatedResult.error?.message}`)
+  {
+    const afterPreset = registered.map((row) => row.name)
+    const missingGated = GATED_TOOLS.filter((name) => !afterPreset.includes(name))
+    check('anagenesis-tools-gated: the write tier exists inside the preset',
+      missingGated.length === 0 && afterPreset.length === EXPECTED_TOOLS.length + GATED_TOOLS.length,
+      `registered=${afterPreset.length} missing=${missingGated.join(',') || 'none'}`)
+    check('anagenesis-tools-gated: logged its grant line', logged('anagenesis-tools-gated: grant'))
+  }
+  // The gear comes from the gated row's grant, so the service already reports it
+  // before the bind row runs. The bind row's own checks live further down, where
+  // it is mounted for real.
+  check('anagenesis-tools-gated: the service reports the granted gear and write availability',
+    service.permissionReport({}).gear === 'autonomous' && service.permissionReport({}).writeToolsAvailable === true,
+    `gear=${service.permissionReport({}).gear}`)
+  check('anagenesis-tools-gated: the status pulse names the project, the gear and the tools',
+    (() => {
+      const pulse = service.pulse({})
+      return /<anagenesis-pulse/.test(pulse.text) && /gear="autonomous"/.test(pulse.text)
+        && /tools="read\+write"/.test(pulse.text) && /project/.test(pulse.text)
+    })(), 'the pulse is what makes "check the scope first" executable')
 
   // ── 3b. host boundary: every tool answer must survive a JSON round trip ─────
   // The stub host in `test/` does not validate tool output; the real host does,
   // and rejects the entire call with `value is not lossless JSON`. That is how
   // `ana_audit view=memory` shipped broken: `{ ...record, embedding: undefined }`
   // keeps the key, JSON.stringify drops it, and the host sees a different object
-  // than the tool returned. So: call all fourteen tools here, in the sandbox, and
-  // check every real return value.
+  // than the tool returned. So: call every registered tool here, in the sandbox,
+  // and check every real return value.
   {
     const { losslessProblem } = await import(new URL('../test/lossless.mjs', import.meta.url).href)
     const callTool = (name, args) => registered.find((row) => row.name === name).definition.execute(args, {})
@@ -879,7 +966,10 @@ async function runChecks(paths) {
     const three = await step('ana_remember', { kind: 'fact', subject: 'boundary sweep three', body: 'body three' })
     await step('ana_link', { from: one.id, to: two.id, rel: 'related' })
     await step('ana_recall', { intent: 'orient', query: 'boundary sweep' })
-    for (const view of ['status', 'journal', 'audit', 'strategies', 'health']) await step('ana_audit', { view })
+    await step('ana_list', { limit: 10 })
+    for (const view of ['status', 'journal', 'audit', 'strategies', 'health', 'scope']) await step('ana_audit', { view })
+    await step('ana_scope', { action: 'status' })
+    await step('ana_preset', { action: 'status' })
     // The regression itself, and the only view that shows resolved links +
     // provenance — the eye a rollback check needs.
     const memoryView = await step('ana_audit', { view: 'memory', id: one.id })
@@ -896,8 +986,9 @@ async function runChecks(paths) {
     await step('ana_forget', { ids: [three.id], reason: 'verify:boot sweep cleanup' })
 
     const covered = new Set(called)
-    check('tools boundary: all 14 tools answered inside the sandbox', covered.size === 14,
-      `covered=${covered.size}/14${covered.size === 14 ? '' : ` — missing ${EXPECTED_TOOLS.filter((name) => !covered.has(name)).join(', ')}`}`)
+    const sweepTargets = EXPECTED_TOOLS.length + GATED_TOOLS.length
+    check(`tools boundary: all ${sweepTargets} registered tools answered inside the sandbox`, covered.size === sweepTargets,
+      `covered=${covered.size}/${sweepTargets}${covered.size === sweepTargets ? '' : ` — missing ${[...EXPECTED_TOOLS, ...GATED_TOOLS].filter((name) => !covered.has(name)).join(', ')}`}`)
     check('tools boundary: every real return value is lossless JSON', losses.length === 0,
       losses.length === 0 ? `${called.length} calls round-tripped through JSON` : losses.join(' | '))
     check('tools boundary: ana_audit view=memory resolves links and keeps provenance',
@@ -935,6 +1026,7 @@ async function runChecks(paths) {
   const vizDisposers = []
   const toolsService = ctx.get('tools')
   const registerBeforeViz = toolsService.register
+  const guardsBeforeViz = guards.length
   toolsService.register = (definition) => {
     const dispose = registerBeforeViz(definition)
     if (VIZ_TOOLS.includes(definition.name)) vizDisposers.push(dispose)
@@ -956,8 +1048,8 @@ async function runChecks(paths) {
   check('anagenesis-viz: provides no service (the preset mounts this row a second time)',
     ctx.get('anagenesis-viz', false) === undefined,
     'ctx.provide would collide inside the preset scope — HANDOFF §10.16')
-  check('anagenesis-viz: installed no guard and no timer', guards.length === 1,
-    `guards=${guards.length} — the only one is anagenesis-guard's`)
+  check('anagenesis-viz: installed no guard and no timer', guards.length === guardsBeforeViz,
+    `guards=${guards.length} (${guardsBeforeViz} before the row) — the viz row is a projection, not a safety layer`)
   check('anagenesis-viz: logged its registration line', logged('anagenesis-viz: dashboard + diagram tools registered'))
 
   {
@@ -989,11 +1081,12 @@ async function runChecks(paths) {
   check('anagenesis-viz: the row registered exactly two removable tools', vizDisposers.length === 2,
     `disposers=${vizDisposers.length}`)
   for (const dispose of [...vizDisposers].reverse()) dispose()
-  check('unload: withdrawing viz leaves exactly the fourteen core tools',
+  check('unload: withdrawing viz leaves the read tier and the preset\'s write tier, and nothing else',
     registered.filter((row) => VIZ_TOOLS.includes(row.name)).length === 0
     && EXPECTED_TOOLS.every((name) => registered.some((row) => row.name === name))
-    && registered.length === EXPECTED_TOOLS.length,
-    `registered=${registered.length} (${EXPECTED_TOOLS.length} expected) — a viz row that outlives its fibre would leak tools`)
+    && GATED_TOOLS.every((name) => registered.some((row) => row.name === name))
+    && registered.length === EXPECTED_TOOLS.length + GATED_TOOLS.length,
+    `registered=${registered.length} (${EXPECTED_TOOLS.length + GATED_TOOLS.length} expected) — a viz row that outlives its fibre would leak tools`)
 
   // ── 4. anagenesis-preset-bind ───────────────────────────────────────────────
   // Instrument the one write the row performs, so the row's own catch-and-warn
@@ -1072,6 +1165,43 @@ async function runChecks(paths) {
     definition === undefined ? 'nothing registered' : `rows=${definition.plugins.length}`)
   check('anagenesis-preset: logged its registration line', logged('anagenesis-preset: registered agent preset "anagenesis"'))
 
+  // ── 5b. every row of the preset composition accepts its own config ─────────
+  // This is the check that would have caught the defect that made the whole
+  // preset show up as *broken* in the live roster while every host-side test
+  // stayed green (HANDOFF §10.15): a row carrying a config key its own schema
+  // does not declare fails config validation at mount time, and the failure
+  // takes the entire preset with it. The bundle patch is validated above; the
+  // preset composition had no such gate until now — and 0.2.0 added a *new* row
+  // to that composition (`anagenesis-tools-gated`), i.e. exactly the risk.
+  {
+    const localRows = {
+      'dsh-anagenesis': await import(new URL('../src/index.js', import.meta.url).href),
+      'dsh-anagenesis/tools': await import(new URL('../src/tools/index.js', import.meta.url).href),
+      'dsh-anagenesis/tools-gated': await import(new URL('../src/tools/gated.js', import.meta.url).href),
+      'dsh-anagenesis/guard': await import(new URL('../src/guard/index.js', import.meta.url).href),
+      'dsh-anagenesis/viz': await import(new URL('../src/viz/index.js', import.meta.url).href),
+      'dsh-anagenesis/preset-bind': await import(new URL('../src/preset/bind.js', import.meta.url).href),
+    }
+    const problems = []
+    let checkedRows = 0
+    for (const row of definition?.plugins ?? []) {
+      const module = localRows[row.name]
+      if (module === undefined) continue // a host package; its schema is not ours to read
+      checkedRows += 1
+      if (row.config === undefined) continue
+      const declared = new Set(Object.keys(module.Config({}) ?? {}))
+      for (const key of Object.keys(row.config)) {
+        if (!declared.has(key)) problems.push(`${row.id}: "${key}" is not a key of its Config schema (${[...declared].join(', ')})`)
+      }
+    }
+    check('anagenesis-preset: every local row accepts the config the composition gives it',
+      problems.length === 0,
+      problems.length === 0 ? `${checkedRows} local row(s) validated against their real Config schemas` : problems.join(' | '))
+    check('anagenesis-preset: the composition mounts the gated write row (the permission layer)',
+      (definition?.plugins ?? []).some((row) => row.name === 'dsh-anagenesis/tools-gated'),
+      `rows=${(definition?.plugins ?? []).map((row) => row.name).filter((n) => String(n).startsWith('dsh-anagenesis')).join(', ')}`)
+  }
+
   // ── 6. contrast: prove the effect contract is really enforced ──────────────
   // Without this, "apply resolved to an effect-legal value" could be a tautology.
   const contrastObject = ctx.plugin({ name: 'contrast-plain-object', apply: () => ({ dispose() {} }) })
@@ -1091,7 +1221,8 @@ async function runChecks(paths) {
   await guard.dispose()
   check('unload: tools row is no longer active', await waitFor(() => tools.state !== ACTIVE), `state=${tools.state}`)
   check('unload: guard row is no longer active', await waitFor(() => guard.state !== ACTIVE), `state=${guard.state}`)
-  check('unload: guard cleanup ran (no guard left behind)', guards.length === 0, `remaining=${guards.length}`)
+  check('unload: guard cleanup ran (the guard row\'s guards are gone)', guards.length === guardsBeforeGuardRow,
+    `remaining=${guards.length} (${guardsBeforeGuardRow} came from the core row's own fallback tier guard) — the guard row must leave nothing behind`)
   check('unload: preset row is no longer active', preset.state !== ACTIVE, `state=${preset.state}`)
   check('unload: preset-bind restored the previous stack',
     JSON.stringify(service.registry.stack('global')) === JSON.stringify(stackBefore),

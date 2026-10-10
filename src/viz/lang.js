@@ -38,6 +38,16 @@ const KIND_ZH = Object.freeze({
   failure: '失败',
 })
 
+/**
+ * 作用域层级（`SCOPE_TIERS` 全表）。窗口侧同表见 `10-i18n.js` 的 `TIER_ZH`。
+ * `none` 不是层级而是"没有档位"（镜像/未激活），一并放在这里好让 `defaultTier` 只有一个答案。
+ */
+const TIER_ZH = Object.freeze({
+  global: '全局',
+  project: '项目',
+  session: '会话',
+})
+
 /** 生命周期状态（`STATES` 全表）。窗口侧同表见 `10-i18n.js` 的 `STATE_ZH`。 */
 const STATE_ZH = Object.freeze({
   draft: '草稿',
@@ -64,6 +74,7 @@ const EN = {
   title: 'anagenesis dashboard',
   section: {
     overview: 'overview',
+    scope: 'scope',
     kinds: 'kinds',
     strategy: 'strategy',
     tuning: 'tuning',
@@ -98,6 +109,10 @@ const EN = {
     errors: 'errors',
     redaction: 'redaction',
     liveTui: 'live TUI',
+    currentProject: 'current project',
+    defaultTier: 'default write tier',
+    gear: 'gear',
+    legacy: 'legacy untagged',
   },
   value: {
     storeVersion: (version, schema) => `v${version} · schema v${schema}`,
@@ -120,6 +135,21 @@ const EN = {
     nothingToRank: 'nothing to rank',
     liveTuiWatch: 'Ctrl+C stops it · this process never writes to the store',
     liveTuiTool: 'node tools/viz-watch.mjs --watch (separate read-only process)',
+    currentProject: (label, namespace, basis) => `${label} · ${namespace} (${basis})`,
+    basisRepo: 'repo',
+    basisPath: 'path',
+    basisUnknown: 'basis unknown',
+    namespace: (label, count) => (label === '' ? `${count} record(s)` : `${label} · ${count} record(s)`),
+    defaultTier: (tier) => String(tier ?? ''),
+    tierUnknown: 'unknown (the default write tier lives in the live service)',
+    gear: (gear, write) => `${gear} · ${write === true ? 'write tools available' : 'read-only (no write tools)'}`,
+    gearMirror: (gear) => `${gear} (read-only mirror: no live service to report a gear)`,
+    gearUnavailable: 'not available in a read-only mirror',
+    presetActive: (preset) => `preset ${preset} active`,
+    presetInactive: 'no preset active: write tools are not registered',
+    legacyCount: (count) => `${count} record(s) written before scope isolation`,
+    legacyNone: '0 (every record carries a scope)',
+    scopeUnknown: 'unknown — a file mirror has no caller to derive a project from',
   },
   warning: {
     mirror: 'read-only mirror: engine health, tuner metric and journal counters come from state/files, not a live service',
@@ -127,6 +157,7 @@ const EN = {
     journalWindow: (shown, total) => `journal window shows ${shown} of ${total} in-memory events`,
     graphCapped: (nodes) => `graph capped at ${nodes} node(s)`,
     unknownSection: (id) => `unknown section "${id}" ignored`,
+    allProjects: 'showing every project in this store; the agent itself would see only its own (current project + global + current session)',
   },
   frame: {
     warnings: 'warnings',
@@ -154,6 +185,7 @@ const ZH = {
   title: 'anagenesis 仪表盘',
   section: {
     overview: '总览',
+    scope: '作用域',
     kinds: '记忆类型',
     strategy: '策略栈',
     tuning: '自调节',
@@ -188,6 +220,10 @@ const ZH = {
     errors: '错误',
     redaction: '脱敏级别',
     liveTui: '实时视图',
+    currentProject: '当前项目',
+    defaultTier: '默认写入档位',
+    gear: '权限档位',
+    legacy: '未标注的旧记忆',
   },
   value: {
     storeVersion: (version, schema) => `v${version} · 结构 v${schema}`,
@@ -210,6 +246,21 @@ const ZH = {
     nothingToRank: '没有可排序的记录',
     liveTuiWatch: 'Ctrl+C 结束 · 本进程绝不写存储',
     liveTuiTool: '在真终端里跑 node tools/viz-watch.mjs --watch（独立只读进程）',
+    currentProject: (label, namespace, basis) => `${label} · ${namespace}（${basis}）`,
+    basisRepo: '仓库',
+    basisPath: '路径',
+    basisUnknown: '来源未知',
+    namespace: (label, count) => (label === '' ? `${count} 条` : `${label} · ${count} 条`),
+    defaultTier: (tier) => lookup(TIER_ZH, tier),
+    tierUnknown: '未知（默认写入档位由实时服务决定）',
+    gear: (gear, write) => `${gear} · ${write === true ? '可写工具可用' : '只读（无写入工具）'}`,
+    gearMirror: (gear) => `${gear}（只读镜像：没有实时服务可报告档位）`,
+    gearUnavailable: '只读镜像下不可用',
+    presetActive: (preset) => `预设 ${preset} 已激活`,
+    presetInactive: '预设未激活：写入类工具未注册',
+    legacyCount: (count) => `${count} 条写于作用域隔离之前`,
+    legacyNone: '0（每条记录都带 scope）',
+    scopeUnknown: '未知 —— 文件镜像没有调用方可推断',
   },
   warning: {
     mirror: '只读镜像：引擎健康度、调参指标与日志计数来自文件，不是实时服务',
@@ -217,6 +268,7 @@ const ZH = {
     journalWindow: (shown, total) => `日志窗口只显示内存中 ${total} 条事件里的 ${shown} 条`,
     graphCapped: (nodes) => `图被限制在 ${nodes} 个节点`,
     unknownSection: (id) => `未知分区「${id}」已忽略`,
+    allProjects: '正在显示这份存储里的所有项目（运维视角）；Agent 自己只看得到它自己的（当前项目 + 全局 + 当前会话）',
   },
   frame: {
     warnings: '告警',

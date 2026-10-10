@@ -10,16 +10,29 @@
  * Scoring (all terms normalized to [0,1] before weighting):
  *   score = wLex*sat(bm25) + wVec*(cos+1)/2 + wRecency*2^(-age/halfLife)
  *         + wConf*confidence + wSal*salience + wAccess*sat(log1p(hits))
- *         + sum(strategy score deltas)
+ *         + wScope*scopeMatch + sum(strategy score deltas)
+ *   and then the whole score is multiplied by `crossProjectFactor` whenever the
+ *   record came from another project (only possible with an explicit
+ *   `crossProject: true`), so "other projects' experience" can never outrank a
+ *   local record that is otherwise its equal.
  * Packing is MMR-lite: greedy max(score - lambda * maxCos(alreadySelected)),
  * stopping at the token budget, so a high-recall plan does not ship five copies
  * of the same belief.
+ *
+ * **Scope isolation lives in this file's candidate loop**, and that is the point:
+ * there is exactly one retrieval implementation, so there is exactly one place
+ * the filter can be forgotten — and it is a closed set (`scopeMatch`), not a
+ * default-allow. Every entry point (tools, service.recall, the viz mirror) runs
+ * through `recall()` or through `inScope`, and a plan that names no project
+ * excludes every project record instead of admitting them.
  * @module dsh-anagenesis/memory/recall
  */
 
 import { clamp, estimateTokens, saturate, tokenize } from '../util.js'
 import { cosine, embed } from './embed.js'
-import { effectiveSalience } from '../store/schema.js'
+import { effectiveSalience, isLegacyUnscoped } from '../store/schema.js'
+import { CONFLICT_PENALTY, createScopeFilter, detectScopeConflicts, scopeMatch } from '../scope/index.js'
+import { scopeLabel } from '../scope/project.js'
 
 /** Intent table: what the agent is about to do decides how memory is shaped. */
 export const INTENTS = Object.freeze({
@@ -101,12 +114,21 @@ export function defaultsFor(intent, scopeParams = {}) {
   const base = INTENTS[intent] ?? INTENTS.orient
   return {
     ...base,
-    weights: { ...base.weights },
+    weights: {
+      ...base.weights,
+      // The scope term is what makes "this project's own experience" outrank an
+      // otherwise identical record from somewhere else. Kept small on purpose:
+      // scope decides *between* comparable candidates, it does not replace
+      // relevance — a highly relevant local memory still beats a barely relevant
+      // one, and an irrelevant local memory is still not injected.
+      scope: pick(scopeParams, 'recall.scopeWeight', 0.12),
+    },
     minConfidence: pick(scopeParams, `recall.${intent}.minConfidence`, base.minConfidence),
     tokenBudget: pick(scopeParams, `recall.${intent}.tokenBudget`, base.tokenBudget),
     halfLifeMs: pick(scopeParams, 'recall.halfLifeMs', 14 * 24 * 3600 * 1000),
     explorationRate: pick(scopeParams, 'recall.explorationRate', 0.25),
     diversity: pick(scopeParams, 'recall.diversity', base.diversity ?? 0.25),
+    crossProjectFactor: pick(scopeParams, 'recall.crossProjectFactor', 0.4),
   }
 }
 
@@ -137,12 +159,30 @@ function pick(params, key, fallback) {
  * @param {(text: string) => number[]} [embedFn] the active vector backend. It
  *   has to be the one that produced the stored vectors: comparing a query from
  *   one space against records from another ranks noise.
+ * @param {{ projectId?: string|null, sessionId?: string|null, crossProject?: boolean, reason?: string }} [context]
+ *   **Where this call happens.** `projectId` is the fingerprint of the project
+ *   the caller is working in; when it is absent the filter admits no project
+ *   record at all (fail closed) rather than falling back to "everything".
+ *   `crossProject: true` is the explicit authorization that lets another
+ *   project's memories into the candidate pool — down-weighted and labelled.
  * @returns {any} RecallPlan
  */
-export function planRecall(request = {}, params = {}, callerScope = 'global', embedFn = embed) {
+export function planRecall(request = {}, params = {}, callerScope = 'global', embedFn = embed, context = {}) {
   const intent = INTENTS[request.intent] ? request.intent : 'orient'
   const defaults = defaultsFor(intent, params)
   const granularity = GRANULARITIES.includes(request.granularity) ? request.granularity : defaults.granularity
+  // The filter is built here, once, from the two things that decide isolation:
+  // the caller's project (from the context, never from the *records*) and the
+  // explicit authorization flag. `request.scope` remains a legacy narrowing hint
+  // for the caller's own session/workspace, but it can no longer *widen* the
+  // search: `crossProject` is the only widening switch, and it is spelled out.
+  const scopeFilter = context.scopeFilter ?? createScopeFilter({
+    projectId: context.projectId ?? null,
+    sessionId: context.sessionId ?? request.scope?.session ?? null,
+    crossProject: context.crossProject === true || request.crossProject === true,
+    authorized: context.crossProject === true || request.crossProject === true,
+    reason: context.reason ?? '',
+  })
   return {
     intent,
     label: defaults.label,
@@ -163,11 +203,16 @@ export function planRecall(request = {}, params = {}, callerScope = 'global', em
       until: request.timeframe?.until ?? null,
     },
     scope: request.scope ?? {},
+    scopeFilter,
+    // The session status pulse (gear / permissions / current project). It is
+    // carried on the plan so exactly one renderer emits it.
+    pulse: context.pulse ?? null,
     callerScope,
     weights: defaults.weights,
     halfLifeMs: defaults.halfLifeMs,
     explorationRate: defaults.explorationRate,
     diversity: defaults.diversity,
+    crossProjectFactor: defaults.crossProjectFactor,
     queryVector: request.query ? embedFn(String(request.query)) : null,
   }
 }
@@ -225,30 +270,59 @@ export function bm25(queryTokens, id, index, docCount) {
 }
 
 /**
+ * Timeframe + scope admission for one record.
+ *
+ * Two shapes are accepted, and the difference matters:
+ *   - `plan.scopeFilter` (a `ScopeFilter`) — the closed-set judgment used by
+ *     every retrieval. Missing/unknown project ⇒ project records are excluded.
+ *   - `plan.scope` (the legacy `{session, workspace, preset}` object) — kept for
+ *     the read-only projections (dashboard, diagram, the file mirror) that show
+ *     the *whole* store to the operator. It still refuses to leak a session
+ *     record into another session, and it now respects `tier` when it is
+ *     present, but "no filter" continues to mean "the operator's own store".
  * @param {import('../store/schema.js').MemoryRecord} record
  * @param {any} plan
- * @param {number} now
- * @param {number} halfLifeMs
  * @returns {boolean}
  */
 export function inScope(record, plan) {
-  const since = plan.timeframe.since
-  const until = plan.timeframe.until
+  const since = plan?.timeframe?.since ?? null
+  const until = plan?.timeframe?.until ?? null
   if (since !== null && record.createdAt < since) return false
   if (until !== null && record.createdAt > until) return false
-  if (record.scope.global) return true
-  const wanted = plan.scope
-  if (wanted.session !== undefined && record.scope.session === wanted.session) return true
-  if (wanted.workspace !== undefined && record.scope.workspace === wanted.workspace) return true
-  if (wanted.preset !== undefined && record.scope.preset === wanted.preset) return true
-  return Object.keys(wanted).length === 0
+  if (plan?.scopeFilter !== undefined && plan?.scopeFilter !== null) {
+    return scopeMatch(record, plan.scopeFilter).ok
+  }
+  return legacyInScope(record, plan?.scope ?? {})
+}
+
+/**
+ * The pre-isolation contract, kept only for read-only projections.
+ * @param {any} record
+ * @param {any} wanted
+ * @returns {boolean}
+ */
+function legacyInScope(record, wanted) {
+  const explicit = wanted !== null && typeof wanted === 'object' && Object.keys(wanted).length > 0
+  const tier = String(record?.scope?.tier ?? '')
+  if (tier === 'session') return record.scope.session === (wanted?.session ?? null)
+  if (tier === 'global' || record?.scope?.global === true) {
+    return wanted?.global === false ? false : true
+  }
+  if (!explicit) return true
+  if (wanted?.session !== undefined && record?.scope?.session === wanted.session) return true
+  if (wanted?.workspace !== undefined && record?.scope?.workspace === wanted.workspace) return true
+  if (wanted?.preset !== undefined && record?.scope?.preset === wanted.preset) return true
+  if (wanted?.projectId !== undefined && record?.scope?.projectId === wanted.projectId) return true
+  return false
 }
 
 /**
  * Run a recall. `engine` is the Layer-2 strategy engine; every hook is optional.
  * @param {import('../store/store.js').MemoryStore} store
  * @param {object} request
- * @param {{ params?: Record<string, any>, engine?: any, scope?: string, now?: () => number, indexCache?: { version: number, index: any } }} [opts]
+ * @param {{ params?: Record<string, any>, engine?: any, scope?: string, now?: () => number,
+ *   indexCache?: { version: number, index: any },
+ *   context?: { projectId?: string|null, sessionId?: string|null, crossProject?: boolean, reason?: string } }} [opts]
  * @returns {Promise<any>}
  */
 export async function recall(store, request = {}, opts = {}) {
@@ -256,7 +330,7 @@ export async function recall(store, request = {}, opts = {}) {
   const state = store.state
   const params = opts.params ?? state.params.global ?? {}
   const engine = opts.engine
-  const basePlan = planRecall(request, params, opts.scope ?? 'global', opts.embed)
+  const basePlan = planRecall(request, params, opts.scope ?? 'global', opts.embed, opts.context ?? {})
   // The stack reshapes the plan before anything is scored: explore widens what
   // counts as a candidate, exploit narrows via its filter, distill shrinks the
   // budget. Caller-specified maxTokens/minConfidence stay locked.
@@ -273,42 +347,90 @@ export async function recall(store, request = {}, opts = {}) {
 
   const docCount = index.lengths.size || 1
   const candidates = []
-  const rejected = { state: 0, kind: 0, confidence: 0, scope: 0, expired: 0, strategy: 0 }
+  const rejected = { state: 0, kind: 0, confidence: 0, scope: 0, expired: 0, strategy: 0, crossProject: 0 }
+  let crossProjectAdmitted = 0
 
   for (const record of Object.values(state.memories)) {
     if (record.state === 'retired') continue
     if (!plan.states.includes(record.state)) { rejected.state++; continue }
     if (plan.kinds !== null && !plan.kinds.includes(record.kind)) { rejected.kind++; continue }
     if (record.confidence < plan.minConfidence) { rejected.confidence++; continue }
-    if (!inScope(record, plan)) { rejected.scope++; continue }
+    const verdict = scopeMatch(record, plan.scopeFilter)
+    if (!verdict.ok) { rejected.scope++; continue }
+    if (verdict.weight < 1) { crossProjectAdmitted += 1; rejected.crossProject += 1 }
     if (record.expiresAt !== null && record.expiresAt <= now && record.state !== 'expired') { rejected.expired++; continue }
     if (engine !== undefined && engine.admits !== undefined && !engine.admits(record, plan)) { rejected.strategy++; continue }
-    candidates.push(scoreRecord(record, plan, index, docCount, now, engine))
+    candidates.push(scoreRecord(record, plan, index, docCount, now, engine, verdict))
   }
 
   const packed = pack(candidates, plan, now, engine)
-  const text = renderInjection(packed.selected, plan, engine)
+  // Conflict detection runs on what was *selected*, and its only effect is on
+  // the projection: the cross-project record's effective confidence is halved,
+  // its score drops, and the injection block says so. No stored record is
+  // touched — a read must not silently rewrite the memory it read.
+  const conflicts = detectScopeConflicts(packed.selected, plan.scopeFilter)
+  if (conflicts.length > 0) applyConflictPenalty(packed.selected, conflicts, plan)
+  const text = renderInjection(packed.selected, plan, engine, conflicts)
 
   return {
     intent: plan.intent,
     granularity: plan.granularity,
     query: plan.query,
+    scope: {
+      projectId: plan.scopeFilter.projectId,
+      sessionId: plan.scopeFilter.sessionId,
+      crossProject: plan.scopeFilter.crossProject,
+      admittedCrossProject: crossProjectAdmitted,
+      conflicts: conflicts.length,
+    },
     selected: packed.selected.map((row) => ({
       id: row.record.id,
       kind: row.record.kind,
       state: row.record.state,
       confidence: Number(row.record.confidence.toFixed(3)),
+      effectiveConfidence: Number((row.effectiveConfidence ?? row.record.confidence).toFixed(3)),
+      scope: scopeLabel(row.record.scope),
+      crossProject: row.crossProject === true,
+      conflict: row.conflict === true,
       score: Number(row.score.toFixed(4)),
       gist: row.record.gist,
       reason: row.reason,
     })),
     dropped: packed.dropped.length,
     tokenCost: text.tokens,
+    // The memory block's own cost, without the status pulse — the number a
+    // `maxTokens` budget is actually about.
+    memoryTokens: text.memoryTokens,
     tokenBudget: plan.tokenBudget,
     text: text.text,
     strategy: engine?.describe?.() ?? ['(no engine)'],
     rejected,
+    conflicts,
     trace: packed.selected.map((row) => ({ id: row.record.id, parts: row.parts })),
+  }
+}
+
+/**
+ * Apply the conflict penalty to the selected cross-project rows.
+ * @param {any[]} selected
+ * @param {import('../scope/index.js').ScopeConflict[]} conflicts
+ * @param {any} plan
+ * @returns {void}
+ */
+export function applyConflictPenalty(selected, conflicts, plan) {
+  const byId = new Map(conflicts.map((row) => [String(row.otherId), row]))
+  for (const row of selected) {
+    const conflict = byId.get(String(row.record.id))
+    if (conflict === undefined) continue
+    row.conflict = true
+    // Halved effective confidence, and the score follows it down. The stored
+    // record keeps its real numbers: what changed is what *this session* is
+    // willing to bet on, which is exactly the judgment that belongs to the
+    // recall, not to the store.
+    row.effectiveConfidence = clamp(row.record.confidence * CONFLICT_PENALTY, 0, 1)
+    row.score *= CONFLICT_PENALTY
+    row.parts.scopeConflict = -CONFLICT_PENALTY
+    row.reason = `${row.reason}; scope conflict with ${conflict.currentId} (${conflict.basis}, sim=${conflict.similarity})`
   }
 }
 
@@ -319,15 +441,24 @@ export async function recall(store, request = {}, opts = {}) {
  * @param {number} docCount
  * @param {number} now
  * @param {any} engine
- * @returns {{ record: any, score: number, parts: Record<string, number>, reason: string, vector: number[] }}
+ * @param {{ ok: boolean, weight: number, relation: string, reason: string }} [verdict]
+ *   The scope judgment already made by the candidate loop. Passed in rather than
+ *   recomputed so scoring and admission can never disagree about which project a
+ *   record belongs to.
+ * @returns {{ record: any, score: number, parts: Record<string, number>, reason: string, vector: number[],
+ *   crossProject: boolean, effectiveConfidence: number }}
  */
-export function scoreRecord(record, plan, index, docCount, now, engine) {
+export function scoreRecord(record, plan, index, docCount, now, engine, verdict) {
   const lex = plan.tokens.length === 0 ? 0 : saturate(bm25(plan.tokens, record.id, index, docCount), 1.5)
   const vec = plan.queryVector === null ? 0 : (cosine(plan.queryVector, record.embedding) + 1) / 2
   const halfLife = engine?.halfLifeMs !== undefined ? engine.halfLifeMs(record, plan) : plan.halfLifeMs
   const age = Math.max(0, now - record.updatedAt)
   const recency = !Number.isFinite(halfLife) || halfLife <= 0 ? 1 : Math.pow(2, -age / halfLife)
   const access = saturate(Math.log1p(record.access.hits), 1.2)
+  const scopeVerdict = verdict ?? (plan.scopeFilter === undefined || plan.scopeFilter === null
+    ? { ok: true, weight: 1, relation: 'unknown', reason: 'no scope filter on this plan' }
+    : scopeMatch(record, plan.scopeFilter))
+  const crossProject = scopeVerdict.weight < 1
   const parts = {
     lex: plan.weights.lex * lex,
     vec: plan.weights.vec * vec,
@@ -337,16 +468,32 @@ export function scoreRecord(record, plan, index, docCount, now, engine) {
     // re-rank another agent's recall (schema v4).
     sal: plan.weights.sal * effectiveSalience(record, plan.callerScope),
     access: plan.weights.access * access,
+    // The scope term: 1 for this project / this session / global, a small
+    // constant for an authorized cross-project or pre-isolation hit.
+    scope: Number(plan.weights.scope ?? 0) * scopeVerdict.weight,
     strategy: 0,
   }
-  let reason = `lex=${lex.toFixed(2)} vec=${vec.toFixed(2)} recency=${recency.toFixed(2)}`
+  let reason = `lex=${lex.toFixed(2)} vec=${vec.toFixed(2)} recency=${recency.toFixed(2)} scope=${scopeVerdict.relation}`
   if (engine?.score !== undefined) {
     const contribution = engine.score(record, plan)
     parts.strategy = contribution.delta
     if (contribution.reason !== undefined) reason = `${reason}; ${contribution.reason}`
   }
-  const score = Object.values(parts).reduce((sum, value) => sum + value, 0)
-  return { record, score, parts, reason, vector: record.embedding }
+  let score = Object.values(parts).reduce((sum, value) => sum + value, 0)
+  // The second half of the down-weight: an admitted cross-project record also
+  // has its whole score multiplied down, so it loses to a local record of equal
+  // lexical/semantic/confidence merit regardless of how the terms are weighted.
+  if (crossProject) score *= Number(plan.crossProjectFactor ?? 1)
+  return {
+    record,
+    score,
+    parts,
+    reason,
+    vector: record.embedding,
+    crossProject,
+    scopeRelation: scopeVerdict.relation,
+    effectiveConfidence: record.confidence,
+  }
 }
 
 /**
@@ -364,7 +511,7 @@ export function pack(candidates, plan, now, engine) {
   let budget = plan.tokenBudget
   for (const candidate of ranked) {
     if (selected.length >= plan.limit) break
-    const cost = estimateTokens(renderMemory(candidate.record, plan.granularity, engine)) + 8
+    const cost = estimateTokens(renderMemory(candidate.record, plan.granularity, engine, plan)) + 8
     if (cost > budget) continue
     if (selected.length > 0 && plan.diversity > 0) {
       let maxSim = 0
@@ -386,12 +533,16 @@ export function pack(candidates, plan, now, engine) {
  * @param {import('../store/schema.js').MemoryRecord} record
  * @param {string} granularity
  * @param {any} [engine]
+ * @param {any} [plan] the plan, when the caller knows it: it is what makes a
+ *   cross-project record *say* it is one. The token estimate in `pack` passes it
+ *   too, so the budget accounts for the warning the model will actually read.
  * @returns {string}
  */
-export function renderMemory(record, granularity, engine) {
+export function renderMemory(record, granularity, engine, plan) {
   const format = engine?.format !== undefined ? engine.format(record, { granularity }) : null
   const note = format?.note === undefined ? '' : ` ${format.note}`
-  const head = `(${record.kind}/${record.state} c=${record.confidence.toFixed(2)})`
+  const marker = plan === undefined ? '' : crossMarker(record, plan)
+  const head = `(${record.kind}/${record.state} c=${record.confidence.toFixed(2)})${marker === '' ? '' : ` ${marker}`}`
   if (granularity === 'gist') return `- ${head} ${record.gist}${note}`
   if (granularity === 'full') {
     return [
@@ -408,16 +559,41 @@ export function renderMemory(record, granularity, engine) {
 }
 
 /**
+ * The per-record scope warning: what a model must read before it applies the
+ * record. Empty for anything that matches the current project.
+ * @param {any} record
+ * @param {any} plan
+ * @returns {string}
+ */
+function crossMarker(record, plan) {
+  const filter = plan?.scopeFilter
+  if (filter === undefined || filter === null) return ''
+  const verdict = scopeMatch(record, filter)
+  if (verdict.weight >= 1) return ''
+  if (isLegacyUnscoped(record)) return '⚠[作用域未标注的旧记忆，请按当前项目核对]'
+  if (verdict.relation === 'other-project') return `⚠[其他项目经验，请勿盲从 ${scopeLabel(record.scope)}]`
+  return `⚠[${verdict.reason}]`
+}
+
+/**
  * Format the whole injection block. Strategy `format` hooks may move a record
  * into a named bucket and set its order; the default buckets are by kind.
+ *
+ * The header states the scope this block was retrieved under, and any
+ * cross-project material is announced **before** the records rather than being
+ * left for the model to notice.
  * @param {ReturnType<typeof scoreRecord>[]} selected
  * @param {any} plan
  * @param {any} engine
+ * @param {import('../scope/index.js').ScopeConflict[]} [conflicts]
  * @returns {{ text: string, tokens: number, buckets: string[] }}
  */
-export function renderInjection(selected, plan, engine) {
+export function renderInjection(selected, plan, engine, conflicts = []) {
+  const pulse = pulseText(plan)
   if (selected.length === 0) {
-    return { text: '', tokens: 0, buckets: [] }
+    // Even an empty result carries the pulse: "nothing matched" is exactly the
+    // moment the model needs to know which project it just searched.
+    return { text: pulse, tokens: estimateTokens(pulse), memoryTokens: 0, buckets: [] }
   }
   /** @type {Map<string, { order: number, lines: string[] }>} */
   const buckets = new Map()
@@ -426,22 +602,60 @@ export function renderInjection(selected, plan, engine) {
     const format = engine?.format !== undefined ? engine.format(row.record, { granularity: plan.granularity }) : null
     const bucket = format?.bucket ?? `${ORDER_HINTS[row.record.kind] ?? 50}.${row.record.kind}`
     const entry = buckets.get(bucket) ?? { order: Number(bucket.split('.')[0]) || 50, lines: [] }
-    const line = renderMemory(row.record, plan.granularity, engine)
+    const line = renderMemory(row.record, plan.granularity, engine, plan)
     bodyTokens += estimateTokens(line) + 2
     entry.lines.push(line)
     buckets.set(bucket, entry)
   }
   const ordered = [...buckets.entries()].sort((a, b) => a[1].order - b[1].order || a[0].localeCompare(b[0]))
+  const crossCount = selected.filter((row) => row.crossProject === true).length
+  const filter = plan.scopeFilter ?? {}
   const header = `<anagenesis-memory intent="${plan.intent}" strategy="${(engine?.describe?.() ?? []).join('+')}" `
-    + `items="${selected.length}" approxTokens="${bodyTokens}" granularity="${plan.granularity}">`
+    + `items="${selected.length}" approxTokens="${bodyTokens}" granularity="${plan.granularity}" `
+    + `scope="${filter.projectId === null || filter.projectId === undefined ? 'unscoped' : `project:${String(filter.projectId).slice(0, 12)}`}" `
+    + `crossProject="${crossCount}" conflicts="${conflicts.length}">`
   const parts = [header]
+  if (crossCount > 0) {
+    parts.push(`⚠ 以下 ${crossCount} 条记忆来自其它项目（已按 ${Number(plan.crossProjectFactor ?? 0).toFixed(2)} 系数降权）。`
+      + '把它们当作**参照**而不是结论：先核对当前项目的实际环境，不确定就问用户，不要直接套用。')
+  }
+  if (conflicts.length > 0) {
+    parts.push(`⚠ 检测到跨项目记忆冲突 ${conflicts.length} 处（语义相似但内容相反）。`
+      + '建议忽略历史经验，以当前环境为准；与当前项目记忆相左的那一条，有效置信度已减半。')
+  }
   for (const [bucket, entry] of ordered) {
     parts.push(`## ${bucket.split('.').slice(1).join('.')}`)
     parts.push(...entry.lines)
   }
   parts.push('</anagenesis-memory>')
-  const text = parts.join('\n')
-  return { text, tokens: estimateTokens(text), buckets: ordered.map(([bucket]) => bucket) }
+  const memoryText = parts.join('\n')
+  // The pulse rides outside the block and outside the *budget*: `maxTokens` is a
+  // statement about how much memory to inject, and silently spending a third of
+  // it on status would be the kind of quiet overrun this project refuses. Both
+  // numbers are reported so a caller can hold either line.
+  const text = pulse === '' ? memoryText : `${memoryText}\n${pulse}`
+  return {
+    text,
+    tokens: estimateTokens(text),
+    memoryTokens: estimateTokens(memoryText),
+    buckets: ordered.map(([bucket]) => bucket),
+  }
+}
+
+/**
+ * The session status pulse, when the caller supplied one.
+ *
+ * It rides *outside* the `<anagenesis-memory>` element on purpose: the memory
+ * block is a parseable payload with a schema-ish header, and mixing a status
+ * line into it would make every consumer learn an exception. The pulse is the
+ * second thing the model reads and the last thing it should be able to ignore.
+ * @param {any} plan
+ * @returns {string}
+ */
+function pulseText(plan) {
+  const pulse = plan?.pulse
+  if (pulse === undefined || pulse === null) return ''
+  return typeof pulse === 'string' ? pulse : String(pulse.text ?? '')
 }
 
 const ORDER_HINTS = Object.freeze({

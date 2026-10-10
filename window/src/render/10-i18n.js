@@ -35,6 +35,26 @@ const STATE_ZH = Object.freeze({
   retired: '已归档',
 })
 
+/**
+ * 作用域层级：`SCOPE_TIERS` 全表（`src/scope/project.js`）。终端侧同表见
+ * `src/viz/lang.js` 的 `TIER_ZH` —— 改这里请两边一起改。
+ */
+const TIER_ZH = Object.freeze({
+  global: '全局',
+  project: '项目',
+  session: '会话',
+})
+
+/** 作用域关系：一条记录相对"当前调用方"的位置（`scopeRelation` 的返回值）。 */
+const RELATION_ZH = Object.freeze({
+  'current-project': '当前项目',
+  'other-project': '其它项目',
+  global: '全局',
+  'current-session': '当前会话',
+  'other-session': '其它会话',
+  unscoped: '未标注',
+})
+
 /** 状态一句话解释 —— 悬停提示用，帮助用户区分"已弃用 / 已过期 / 已归档"。 */
 const STATE_HINT_ZH = Object.freeze({
   draft: '探索期写入的初步记录，可信度低，随时会改写',
@@ -49,6 +69,7 @@ const STATE_HINT_ZH = Object.freeze({
 /** 仪表盘分区标题。 */
 const SECTION_ZH = Object.freeze({
   overview: '总览',
+  scope: '作用域',
   lifecycle: '生命周期分布',
   kinds: '记忆类型分布',
   strategy: '策略栈',
@@ -61,6 +82,7 @@ const SECTION_ZH = Object.freeze({
 /** 分区副标题：一句话说明这一块在回答什么问题。 */
 const SECTION_HINT_ZH = Object.freeze({
   overview: '这份存储的基本事实',
+  scope: '这些记忆各自属于哪个项目；默认只看得到当前项目、全局与当前会话',
   lifecycle: '记忆在各生命周期状态上的分布',
   kinds: '记忆按类型分布，看清结构而非数量',
   strategy: '当前生效的注入策略栈与健康度',
@@ -218,6 +240,26 @@ function zhState(value) {
 function zhStateHint(value) {
   const key = String(value ?? '')
   return Object.prototype.hasOwnProperty.call(STATE_HINT_ZH, key) ? STATE_HINT_ZH[key] : ''
+}
+
+/**
+ * 作用域层级。`none`（没有档位）不是层级，但也有中文说法，所以一并放在这张表里 ——
+ * 窗口里"档位"这个词只有一个来源。
+ * @param {unknown} value @returns {string}
+ */
+function zhTier(value) {
+  const key = String(value ?? '')
+  if (key === 'none') return '未启用'
+  return zhLookup(TIER_ZH, key, '档位')
+}
+
+/**
+ * 作用域关系。未知值原样透出（`关系「xxx」`）—— 模型新增一个 relation 时，
+ * 界面上必须看得见，而不是静默变成空标签。
+ * @param {unknown} value @returns {string}
+ */
+function zhRelation(value) {
+  return zhLookup(RELATION_ZH, value, '关系')
 }
 
 /** @param {unknown} value @returns {string} */

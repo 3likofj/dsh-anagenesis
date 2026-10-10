@@ -97,6 +97,15 @@ function mermaidMemoryGraph(model) {
     }
     lines.push(`  ${nodeId(edge.from)} -->|${oneLine(edge.rel, 20)}| ${to}`)
   }
+  // Nodes the caller could not have recalled (another project, or an un-scoped
+  // legacy record) are marked: a pasted memory graph must not look like one
+  // homogeneous experience. Nothing is emitted when every node is the caller's
+  // own, so the default artifact stays byte-identical.
+  const foreign = nodes.filter((node) => node?.tone === 'warn')
+  if (foreign.length > 0) {
+    lines.push('  classDef scope_foreign stroke:#f59e0b,stroke-dasharray:5 3')
+    for (const node of foreign) lines.push(`  class ${nodeId(node.id)} scope_foreign`)
+  }
   if (nodes.length === 0) lines.push(`  empty["${t.diagram.noMemories}"]:::dangling`)
   return lines.join('\n')
 }
@@ -205,7 +214,7 @@ export function renderAscii(model) {
   const byId = new Map(nodes.map((node) => [String(node.id), node]))
   const lines = [t.diagram.asciiGraph(nodes.length, (model?.edges ?? []).length)]
   for (const node of nodes) {
-    lines.push(`  [${node.state}] ${oneLine(node.label, 52)}  ${Number(node.salience).toFixed(2)}`)
+    lines.push(`  [${node.state}] ${oneLine(node.label, 52)}  ${Number(node.salience).toFixed(2)}${asciiScope(node)}`)
     for (const edge of (model?.edges ?? []).filter((row) => String(row.from) === String(node.id))) {
       const target = byId.get(String(edge.to))
       lines.push(`      └─ ${oneLine(edge.rel, 14).padEnd(14)} -> ${target === undefined ? `${t.diagram.asciiOutside} ${oneLine(edge.to, 20)}` : oneLine(target.label, 40)}`)
@@ -213,4 +222,21 @@ export function renderAscii(model) {
   }
   if (nodes.length === 0) lines.push(`  ${t.diagram.noMemories}`)
   return lines.join('\n')
+}
+
+/**
+ * The scope marker on one ASCII node: the short scope label always (it is a
+ * machine identifier, like a journal event type — not copy, so it is not
+ * translated), plus the relation when the node is one the caller could not have
+ * recalled. That second part is what makes a pasted diagram honest: an
+ * `other-project` node is visibly not your own experience.
+ * @param {any} node
+ * @returns {string}
+ */
+function asciiScope(node) {
+  const scope = typeof node?.scope === 'string' ? node.scope : ''
+  if (scope === '') return ''
+  const relation = typeof node?.relation === 'string' ? node.relation : ''
+  const mark = node?.tone === 'warn' && relation !== '' && relation !== scope ? ` (${relation})` : ''
+  return `  ${scope}${mark}`
 }

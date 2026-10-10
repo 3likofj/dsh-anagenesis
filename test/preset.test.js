@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,7 +22,7 @@ import {
   toDirectoryForm,
   windowRow,
 } from '../src/preset/definition.js'
-import { installPresetDirectory, removePresetDirectory } from '../src/preset/index.js'
+import { installPresetDirectory, removePresetDirectory, GENERATED_MARKER } from '../src/preset/index.js'
 import { PERSONA, OPERATING_NOTES } from '../src/preset/persona.js'
 
 test('preset: the definition is the single source for both host forms', () => {
@@ -126,6 +126,53 @@ test('preset: it is AWARE of the visualization window and does not mount it', ()
 
   // The row is exported for a profile that does want it, and it is exactly one row.
   assert.deepEqual(windowRow(), [{ id: 'anagenesis-window', name: 'dsh-anagenesis-window' }])
+})
+
+test('preset: a generated composition is refreshed, a hand-written one is never touched', async () => {
+  // The distinction this test pins is the whole reason the refresh exists: the
+  // `anagenesis-tools-gated` row could not otherwise reach an installation that
+  // already had a composition on disk, and "leave an existing file alone" would
+  // silently keep the write tools coming from the global row. A file *this
+  // plugin generated* is its own artifact; a file someone edited is theirs.
+  const home = await mkdtemp(join(tmpdir(), 'ana-preset-refresh-'))
+  const previousHome = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  try {
+    const dir = join(home, '.agent-presets', PRESET_ID)
+    await mkdir(dir, { recursive: true })
+    const compositionPath = join(dir, 'agent.cordis.yml')
+
+    // Ours, but stale: it carries the generated marker and lacks the new row.
+    const stale = `${GENERATED_MARKER} from an older version\n- id: anagenesis-core\n  name: dsh-anagenesis\n`
+    await writeFile(compositionPath, stale, 'utf8')
+    const refreshed = await installPresetDirectory({
+      id: PRESET_ID,
+      definition: anagenesisPreset(),
+      log: () => {},
+      warn: () => {},
+    })
+    assert.equal(refreshed.refreshed, true, 'a generated file is brought up to date')
+    assert.equal(refreshed.created, false, 'and that is a refresh, not a fresh install')
+    const updated = await readFile(compositionPath, 'utf8')
+    assert.equal(updated, toDirectoryForm(anagenesisPreset()).compositionYaml)
+    assert.match(updated, /dsh-anagenesis\/tools-gated/, 'the row that makes the preset a permission layer is in the refreshed composition')
+
+    // Idempotent: a second install of the same definition writes nothing.
+    const again = await installPresetDirectory({ id: PRESET_ID, definition: anagenesisPreset(), log: () => {}, warn: () => {} })
+    assert.equal(again.created, false)
+    assert.equal(again.refreshed, undefined, 'already current: no rewrite is reported')
+
+    // Someone else's file: never touched, marker or not.
+    await writeFile(compositionPath, '- id: mine\n  name: my-plugin\n', 'utf8')
+    const third = await installPresetDirectory({ id: PRESET_ID, definition: anagenesisPreset(), log: () => {}, warn: () => {} })
+    assert.equal(third.created, false)
+    assert.equal(third.refreshed, undefined)
+    assert.equal(await readFile(compositionPath, 'utf8'), '- id: mine\n  name: my-plugin\n')
+  } finally {
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
+  }
 })
 
 test('preset: the directory install is idempotent and leaves local edits alone', async () => {

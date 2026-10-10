@@ -26,7 +26,7 @@ import { existsSync } from 'node:fs'
 import Schema from '@deepseek-ai/schemastery'
 
 import { MemoryStore } from './store/store.js'
-import { SCHEMA_VERSION } from './store/schema.js'
+import { SCHEMA_VERSION, isLegacyUnscoped } from './store/schema.js'
 import { createMemoryOps } from './memory/ops.js'
 import { recall as runRecall } from './memory/recall.js'
 import { resolveEmbedder } from './memory/embed.js'
@@ -35,6 +35,13 @@ import { StrategyEngine } from './strategy/engine.js'
 import { Tuner } from './meta/tuner.js'
 import { runReflection } from './meta/reflect.js'
 import { createInvariantGate, InvariantViolation } from './guard/invariants.js'
+import {
+  SCOPE_TIERS, buildPulse, createScopeFilter, createScopeResolver, fingerprintProject,
+  namespaceCounts, projectLabel, scopeLabel, scopeMatch,
+} from './scope/index.js'
+import { createPermissions } from './permission/registry.js'
+import { GEAR_NONE, gearCovers, toolsForGear } from './permission/tiers.js'
+import { createPermissionGuard } from './permission/guard.js'
 
 export const name = 'anagenesis-core'
 
@@ -103,6 +110,22 @@ export const Config = Schema.object({
     .description('证据多久没被引用就算「衰减」（毫秒）；只有超过它的既有信念才会被拿去反思。'),
   maxReflectionsPerRun: Schema.number().default(2)
     .description('每次反思最多归档几条假设。'),
+  // ── scope isolation ────────────────────────────────────────────────────────
+  // The tier a write lands in when the caller named none. `project` is the
+  // default and it is the whole point of the change: "no scope given" used to
+  // mean "global", which is how one project's experience ended up being recalled
+  // in another. A host that genuinely wants the old behaviour can say so here,
+  // explicitly, and the choice is then visible in the config.
+  defaultScopeTier: Schema.string().default('project')
+    .description('没有显式指定作用域时，记忆落在哪一层：project（默认，当前项目）| global（跨项目通用）| session（临时任务）。'),
+  workspace: Schema.string().default('')
+    .description('显式指定"当前项目"的工作目录。留空时用工具调用携带的 cwd（真宿主：exec.agent.session.header.cwd），再退回进程 cwd。'),
+  sessionTtlMs: Schema.number().default(24 * 3600 * 1000)
+    .description('会话级记忆的默认存活时间（毫秒）；0 表示不过期。会话级记忆的任务结束即废弃，靠这个 TTL 自动过期（走普通事务，可回滚）。'),
+  recallCrossProjectDefault: Schema.boolean().default(false)
+    .description('是否默认把其它项目的记忆纳入召回。默认 false —— 跨项目检索必须显式授权，而且回来时会被降权并逐条标注。'),
+  registerPermissionGuard: Schema.boolean().default(true)
+    .description('是否在核心行内安装执行期权限护栏（只有 core 被单独挂载、没有 guard 行时的兜底）。guard 行也会安装同一道护栏，重复安装是幂等的。'),
 })
 
 /**
@@ -154,7 +177,42 @@ export async function apply(ctx, config = {}) {
 
   const registry = new StrategyRegistry({ store, logger })
   const tuner = new Tuner({ store, registry, logger, safeMode })
-  const ops = createMemoryOps({ store, embed: embedFn })
+
+  // ── scope isolation + permission layer ────────────────────────────────────
+  // `scopeResolver` is the single place a "where am I" question is answered, and
+  // `permissions` is the single place a "may I write" question is answered. Both
+  // are created before `ops`, because the write path needs them injected:
+  //   - `defaultScope` is what "the caller named no scope" means, and it now
+  //     means *this project* (configurable, but never silently global);
+  //   - `projectRegistry` gives a first-seen project fingerprint a human label
+  //     through an ordinary invertible `projectSet` patch.
+  const scopeResolver = createScopeResolver({ fallbackCwd: () => config.workspace ?? process.cwd(), logger })
+  const permissions = createPermissions({
+    logger,
+    onChange: (snapshot) => { ctx.emit?.('anagenesis/permissions', snapshot) },
+  })
+  const defaultTier = ['global', 'project', 'session'].includes(String(config.defaultScopeTier))
+    ? String(config.defaultScopeTier)
+    : 'project'
+  const sessionTtlMs = Math.max(0, Number(config.sessionTtlMs ?? 24 * 3600 * 1000))
+
+  const currentDefaultScope = () => {
+    const identity = scopeResolver.current()
+    return {
+      tier: defaultTier,
+      projectId: identity.id,
+      workspace: identity.root,
+      sessionTtlMs,
+      origin: 'default',
+    }
+  }
+
+  const ops = createMemoryOps({
+    store,
+    embed: embedFn,
+    defaultScope: currentDefaultScope,
+    projectRegistry: (state, scope, now) => scopeResolver.registryPatch(state, scope, now),
+  })
   const engine = new StrategyEngine({
     registry,
     logger,
@@ -188,21 +246,337 @@ export async function apply(ctx, config = {}) {
     engine,
     tuner,
     ops,
+    permissions,
     defaults: { stack: [...DEFAULT_STACK], tokenBudget: config.recallDefaultTokenBudget ?? 1600 },
     /**
+     * Where a call is happening: project identity, scope tag, namespace and the
+     * closed-set filter for this caller. Every tool call, every write and the
+     * pulse go through it, so "which project am I in" has exactly one answer.
+     * @param {any} [exec] the host's tool execution object (or `{}`)
+     * @param {{ tier?: string, crossProject?: boolean, reason?: string }} [explicit]
+     * @returns {{ identity: any, scope: any, namespace: string, tier: string, filter: any }}
+     */
+    scopeFor(exec, explicit = {}) {
+      return scopeResolver.forCall(exec, {
+        ...explicit,
+        tier: explicit.tier,
+        crossProject: explicit.crossProject === true || config.recallCrossProjectDefault === true,
+      })
+    },
+    /**
+     * The scope tag a write lands in. Unlike `scopeFor` (which describes the
+     * caller), this resolves the *record's* scope: an explicit request wins,
+     * otherwise the configured default tier in the caller's project.
+     * @param {any} [exec]
+     * @param {any} [explicit] the tool's `scope` argument (new shape, with a
+     *   legacy shape `{global, session, workspace, preset}` still accepted)
+     * @returns {any} a scope tag for `createMemory`
+     */
+    writeScope(exec, explicit) {
+      const context = scopeResolver.forCall(exec)
+      const wanted = normalizeScopeRequest(explicit)
+      if (wanted.tier === null) {
+        return {
+          ...context.scope,
+          tier: defaultTier,
+          origin: 'default',
+          sessionTtlMs,
+        }
+      }
+      // A tier with no id to bind to degrades *narrower*, never wider: asking for
+      // a project while the project is unknown lands in the session, and a session
+      // without an id lands in the project. The one thing it never does is
+      // silently become global.
+      return {
+        tier: wanted.tier,
+        projectId: wanted.projectId ?? context.identity.id,
+        sessionId: wanted.sessionId ?? context.sessionId ?? null,
+        presetId: wanted.preset ?? null,
+        workspace: context.identity.root,
+        profile: null,
+        origin: 'explicit',
+        sessionTtlMs,
+      }
+    },
+    /**
+     * May this caller read this record? The same closed-set judgment recall uses,
+     * exposed for the by-id read path (`ana_audit view=memory`) so it cannot be
+     * used to step around the filter.
+     * @param {any} record
+     * @param {any} [exec]
+     * @param {boolean} [crossProject]
+     * @returns {{ ok: boolean, relation: string, reason: string }}
+     */
+    canRead(record, exec, crossProject = false) {
+      const context = scopeResolver.forCall(exec)
+      const filter = createScopeFilter({
+        projectId: context.identity.id,
+        sessionId: context.sessionId,
+        crossProject: crossProject === true,
+      })
+      const verdict = scopeMatch(record, filter)
+      return { ok: verdict.ok, relation: verdict.relation, reason: verdict.reason }
+    },
+    /**
+     * @param {{ limit?: number, states?: string[], kinds?: string[], crossProject?: boolean, exec?: any }} [request]
+     * @returns {Promise<{ rows: any[], counts: any, project: string, namespace: string }>}
+     */
+    async listMemories(request = {}) {
+      const context = scopeResolver.forCall(request.exec)
+      const filter = createScopeFilter({
+        projectId: context.identity.id,
+        sessionId: context.sessionId,
+        crossProject: request.crossProject === true,
+      })
+      const limit = Math.max(1, Math.min(Number(request.limit ?? 25) || 25, 200))
+      const rows = []
+      for (const record of Object.values(store.state.memories)) {
+        if (record.state === 'retired') continue
+        if (Array.isArray(request.states) && request.states.length > 0 && !request.states.includes(record.state)) continue
+        if (Array.isArray(request.kinds) && request.kinds.length > 0 && !request.kinds.includes(record.kind)) continue
+        const verdict = scopeMatch(record, filter)
+        if (!verdict.ok) continue
+        rows.push({
+          id: record.id,
+          scope: scopeLabel(record.scope),
+          relation: verdict.relation,
+          project: record.scope.projectId === null ? null : projectLabel(store.state, record.scope.projectId),
+          kind: record.kind,
+          state: record.state,
+          confidence: Number(record.confidence.toFixed(3)),
+          salience: Number(record.salience.toFixed(3)),
+          createdAt: record.createdAt,
+          gist: record.gist.slice(0, 160),
+        })
+      }
+      rows.sort((a, b) => b.createdAt - a.createdAt)
+      return {
+        rows: rows.slice(0, limit),
+        counts: {
+          matched: rows.length,
+          byScope: countBy(rows, (row) => row.scope.split(':')[0]),
+          byNamespace: countBy(rows, (row) => row.relation),
+          store: namespaceCounts(store.state),
+        },
+        project: context.identity.id,
+        namespace: context.namespace,
+      }
+    },
+    /**
+     * The scope report: which projects this store knows, how many memories each
+     * namespace physically holds, and where this caller stands. It is what
+     * `ana_audit view=scope` and the dashboard print.
+     * @param {any} [exec]
+     * @returns {any}
+     */
+    scopeReport(exec) {
+      const context = scopeResolver.forCall(exec)
+      const counts = namespaceCounts(store.state)
+      /** @type {Record<string, any>} */
+      const namespaces = {}
+      for (const [namespace, count] of Object.entries(counts.byNamespace)) {
+        const [kind, ...rest] = namespace.split(':')
+        namespaces[namespace] = {
+          count,
+          tier: kind === 'global' ? 'global' : kind,
+          projectId: kind === 'project' ? rest.join(':') : null,
+          label: kind === 'project' ? projectLabel(store.state, rest.join(':')) : namespace,
+          current: namespace === context.namespace,
+        }
+      }
+      return {
+        current: {
+          namespace: context.namespace,
+          tier: context.tier,
+          projectId: context.identity.id,
+          projectLabel: context.identity.label,
+          basis: context.identity.basis,
+          root: context.identity.root,
+          remote: context.identity.remote,
+          workspace: context.identity.root,
+          session: context.sessionId,
+        },
+        defaultScopeTier: defaultTier,
+        sessionTtlMs,
+        crossProjectDefault: config.recallCrossProjectDefault === true,
+        knownProjects: Object.values(store.state.projects ?? {}).map((entry) => ({
+          id: entry.id,
+          label: entry.label,
+          kind: entry.kind,
+          root: entry.root,
+          remote: entry.remote,
+          firstSeenAt: entry.firstSeenAt,
+          lastSeenAt: entry.lastSeenAt,
+          current: entry.id === context.identity.id,
+          memories: counts.byNamespace[`project:${entry.id}`] ?? 0,
+        })),
+        namespaces,
+        totals: counts.byTier,
+        journalNamespaces: store.journalStats().byNamespace ?? {},
+      }
+    },
+    /**
+     * The session status pulse: the one line an agent must be able to see to make
+     * "check the scope before you trust a memory" an executable rule rather than a
+     * slogan. It is emitted (a) inside every recall block and (b) — when the
+     * preset row can reach the prompt service — once per step through
+     * `systemPrompt.context()`.
+     * @param {any} [exec]
+     * @param {{ conflicts?: number, crossProject?: boolean, session?: string }} [extra]
+     * @returns {{ text: string, data: any }}
+     */
+    pulse(exec, extra = {}) {
+      const context = scopeResolver.forCall(exec)
+      return buildPulse({
+        projectId: context.identity.id,
+        projectLabel: context.identity.label,
+        tier: context.tier,
+        sessionId: context.sessionId ?? extra.session ?? null,
+        gear: permissions.gear(),
+        preset: permissions.activeCount() > 0 ? 'anagenesis' : null,
+        allowed: permissions.allowedTools(),
+        crossProject: extra.crossProject === true,
+        conflicts: extra.conflicts ?? 0,
+      })
+    },
+    /**
+     * @param {any} [exec]
+     * @returns {any} preset + gear + toolset + scope, for `ana_preset`/dashboard
+     */
+    permissionReport(exec) {
+      const context = scopeResolver.forCall(exec)
+      const gear = permissions.gear()
+      return {
+        preset: permissions.activeCount() > 0 ? 'anagenesis' : null,
+        presetActive: permissions.activeCount() > 0,
+        gear,
+        gearLabel: gear === GEAR_NONE ? '未启用预设' : gear,
+        grants: permissions.describe().scopeKeys,
+        tools: permissions.allowedTools(),
+        writeToolsAvailable: gearCovers(gear, 'write'),
+        adminAvailable: gearCovers(gear, 'admin'),
+        readOnlyTools: toolsForGear('passive'),
+        scope: {
+          namespace: context.namespace,
+          tier: context.tier,
+          projectId: context.identity.id,
+          projectLabel: context.identity.label,
+          session: context.sessionId,
+        },
+      }
+    },
+    /**
+     * Change the gear. Journaled, and it returns the inverse — switching the gear
+     * is as revertible as switching a strategy stack.
+     * @param {string} gear
+     * @param {{ reason?: string, by?: string, force?: boolean }} [opts]
+     * @returns {Promise<{ gear: string, previous: string, seq: number, revert: () => Promise<any> }>}
+     */
+    async setGear(gear, opts = {}) {
+      const change = permissions.setGear(gear, {
+        reason: opts.reason ?? '',
+        by: opts.by ?? 'agent',
+        // Raising the gear is only ever allowed for the host (or when the current
+        // gear already covers the target): an agent must not be able to widen its
+        // own permissions. Lowering is always allowed.
+        force: opts.force === true,
+      })
+      const result = await store.transact({
+        auditAppend: [{
+          id: `gear_${Date.now().toString(36)}`,
+          at: Date.now(),
+          type: 'permission.gear',
+          detail: { from: change.previous, to: change.applied, by: opts.by ?? 'agent', reason: opts.reason ?? null },
+        }],
+      }, { type: 'permission.gear', scope: 'global', by: opts.by ?? 'agent', payload: { from: change.previous, to: change.applied } })
+      return {
+        gear: change.applied,
+        previous: change.previous,
+        seq: result.seq,
+        /**
+         * Put the gear back. Note what is *not* reverted: the audit row. The store
+         * refuses to compensate an audit-only event on purpose — an audit entry
+         * records that something happened, and a rollback that erased the record
+         * of the change it rolled back would be a lie (see `MemoryStore.revert`).
+         * The gear itself is runtime state, so dropping the override *is* the
+         * inverse; the journal keeps the history of both.
+         */
+        revert: async () => {
+          change.dispose()
+          return { gear: permissions.gear(), auditSeq: result.seq }
+        },
+      }
+    },
+    /**
+     * End a session's temporary memories: everything in `session:<id>` becomes
+     * expired in one ordinary transaction, so it is revertible like any other
+     * expiry. "任务结束即废弃" is a policy, not a special cleanup path.
+     * @param {string} sessionId
+     * @param {string} [reason]
+     * @returns {Promise<any>}
+     */
+    async dropSession(sessionId, reason = 'session ended') {
+      const prefix = `session:${String(sessionId)}`
+      /** @type {string[]} */
+      const ids = []
+      for (const record of Object.values(store.state.memories)) {
+        if (record.state === 'retired' || record.state === 'expired') continue
+        if (record.scope?.tier !== 'session' || record.scope.session !== String(sessionId)) continue
+        ids.push(record.id)
+      }
+      if (ids.length === 0) return { ok: true, ids: [], noop: true, namespace: prefix }
+      const result = await ops.expire({ ids, reason: `session dropped: ${reason}` })
+      return { ok: true, ids, seq: result.seq, namespace: prefix }
+    },
+    /**
      * @param {object} request
-     * @param {{ params?: any, scope?: string }} [opts]
+     * @param {{ params?: any, scope?: string, exec?: any, crossProject?: boolean, reason?: string }} [opts]
      */
     async recall(request, opts = {}) {
       const scope = opts.scope ?? 'global'
       const params = { ...(store.state.params[scope] ?? {}), ...(opts.params ?? {}) }
-      const result = await runRecall(store, request, { params, engine: engine.forScope(scope), scope, embed: embedFn })
+      const context = scopeResolver.forCall(opts.exec, {
+        crossProject: opts.crossProject === true || config.recallCrossProjectDefault === true,
+        reason: opts.reason ?? '',
+      })
+      const pulse = buildPulse({
+        projectId: context.identity.id,
+        projectLabel: context.identity.label,
+        tier: context.tier,
+        sessionId: context.sessionId,
+        gear: permissions.gear(),
+        preset: permissions.activeCount() > 0 ? 'anagenesis' : null,
+        allowed: permissions.allowedTools(),
+        crossProject: context.filter.crossProject,
+      })
+      const result = await runRecall(store, request, {
+        params,
+        engine: engine.forScope(scope),
+        scope,
+        embed: embedFn,
+        context: {
+          scopeFilter: context.filter,
+          pulse,
+        },
+      })
       await store.audit('recall', {
         intent: result.intent,
         selected: result.selected.length,
         dropped: result.dropped,
         tokens: result.tokenCost,
         strategy: result.strategy,
+        scope: {
+          projectId: context.identity.id,
+          namespace: context.namespace,
+          crossProject: context.filter.crossProject,
+          admittedCrossProject: result.scope?.admittedCrossProject ?? 0,
+          conflicts: result.conflicts?.length ?? 0,
+        },
+        // The authorization is recorded where it can be reviewed. A cross-project
+        // recall is a deliberate act, and the audit trail is where "who decided
+        // to trust another project's experience" belongs.
+        authorization: context.filter.crossProject ? { by: 'agent', reason: opts.reason ?? '' } : null,
+        project: context.identity.id,
       }, {
         scope,
         // One recall call is one observation, whether or not anything was
@@ -235,6 +609,9 @@ export async function apply(ctx, config = {}) {
     /** @returns {any} a compact health/observability snapshot for `ana_audit` */
     status() {
       const state = store.state
+      const scope = scopeResolver.current()
+      const counts = namespaceCounts(state)
+      const gear = permissions.gear()
       return {
         version: state.version,
         schemaVersion: state.schemaVersion,
@@ -243,6 +620,34 @@ export async function apply(ctx, config = {}) {
         memories: Object.keys(state.memories).length,
         byState: countBy(state.memories, (record) => record.state),
         byKind: countBy(state.memories, (record) => record.kind),
+        // Scope isolation, in the one place a status view asks for it: which
+        // namespaces hold how many memories, which project this process is in, and
+        // how many records are still untagged legacy.
+        scope: {
+          current: {
+            projectId: scope.id,
+            projectLabel: scope.label,
+            namespace: `project:${scope.id}`,
+            basis: scope.basis,
+            root: scope.root,
+          },
+          defaultScopeTier: defaultTier,
+          sessionTtlMs,
+          byTier: counts.byTier,
+          byNamespace: counts.byNamespace,
+          knownProjects: Object.keys(state.projects ?? {}).length,
+          legacyUntagged: Object.values(state.memories).filter((record) => isLegacyUnscoped(record)).length,
+        },
+        // The permission layer, so "why can't I write" is answerable from state
+        // instead of from a guess about which preset is on.
+        permissions: {
+          gear,
+          presetActive: permissions.activeCount() > 0,
+          grants: permissions.describe().scopeKeys,
+          allowedTools: permissions.allowedTools(),
+          writeToolsAvailable: gearCovers(gear, 'write'),
+          adminAvailable: gearCovers(gear, 'admin'),
+        },
         stacks: state.stacks,
         strategies: Object.keys(state.strategies).length,
         stats: state.stats,
@@ -261,7 +666,7 @@ export async function apply(ctx, config = {}) {
           // backend than the active one: recall would be comparing spaces.
           stale: (state.embed?.id ?? null) !== activeEmbedder.id || (state.embed?.dim ?? null) !== activeEmbedder.dim,
         },
-        lastEvents: store.recentEvents({ limit: 5 }).map((event) => ({ seq: event.seq, type: event.type })),
+        lastEvents: store.recentEvents({ limit: 5 }).map((event) => ({ seq: event.seq, type: event.type, ns: event.ns })),
       }
     },
   }
@@ -299,11 +704,18 @@ export async function apply(ctx, config = {}) {
     const timerDisposer = startSweep(ops, config, logger)
     const compactionDisposer = startCompaction(store, config, logger)
     const reflectionDisposer = startReflection({ store, ops, logger, config, state: reflection })
+    // The execution-time permission guard, as a fallback for a host that mounts
+    // only the core row. When the guard row is present it installs the same guard;
+    // duplicates are harmless (a guard is monotonic — the first refusal wins and
+    // no later guard can force-allow), which is exactly why installing it twice is
+    // preferable to installing it nowhere.
+    const guardDisposer = installPermissionGuard(ctx, permissions, config, logger)
     const stateListener = store.on('*', (payload, event) => {
       ctx.emit?.('anagenesis/state', { seq: event.seq, type: event.type, payload })
     })
     return async () => {
       stateListener.dispose()
+      guardDisposer()
       reflectionDisposer()
       compactionDisposer()
       timerDisposer()
@@ -315,6 +727,75 @@ export async function apply(ctx, config = {}) {
 
   logger.info(`anagenesis: store ready at ${rootDir} (schema v${SCHEMA_VERSION}, ${Object.keys(store.state.memories).length} memories)`)
   ctx.emit?.('anagenesis/ready', { rootDir, version: store.version })
+}
+
+/**
+ * Normalize the `scope` argument a write tool received into a tier request.
+ *
+ * Three input shapes are accepted, and the order they are tried in is the order
+ * of explicitness:
+ *   1. the new shape — `{ tier, projectId?, sessionId? }` (a tier named outright);
+ *   2. the legacy shape — `{ global: true }` / `{ session: id }` / `{ workspace: path }`,
+ *      which mapped onto today's tiers without changing the meaning;
+ *   3. nothing — `{ tier: null }`, and the caller falls back to the configured
+ *      default tier in the caller's project.
+ *
+ * A legacy `workspace` path is *resolved* into the project fingerprint of that
+ * path rather than being stored as a string: the path is machine-specific, the
+ * fingerprint is the identity, and this is the same function the migration uses.
+ * @param {any} explicit
+ * @returns {{ tier: string|null, projectId?: string|null, sessionId?: string|null, preset?: string|null }}
+ */
+export function normalizeScopeRequest(explicit) {
+  if (explicit === undefined || explicit === null) return { tier: null }
+  if (typeof explicit === 'string') {
+    return SCOPE_TIERS.includes(explicit) ? { tier: explicit } : { tier: null }
+  }
+  if (typeof explicit !== 'object') return { tier: null }
+  const tier = SCOPE_TIERS.includes(String(explicit.tier)) ? String(explicit.tier) : null
+  if (tier !== null) {
+    return {
+      tier,
+      projectId: explicit.projectId ?? null,
+      sessionId: explicit.sessionId ?? explicit.session ?? null,
+      preset: explicit.preset ?? null,
+    }
+  }
+  if (explicit.global === true) return { tier: 'global' }
+  if (typeof explicit.session === 'string' && explicit.session !== '') {
+    return { tier: 'session', sessionId: explicit.session, preset: explicit.preset ?? null }
+  }
+  if (typeof explicit.workspace === 'string' && explicit.workspace.trim() !== '') {
+    return { tier: 'project', projectId: fingerprintProject({ cwd: explicit.workspace }).id, preset: explicit.preset ?? null }
+  }
+  if (typeof explicit.projectId === 'string' && explicit.projectId !== '') {
+    return { tier: 'project', projectId: explicit.projectId, preset: explicit.preset ?? null }
+  }
+  return { tier: null }
+}
+
+/**
+ * Install the tier guard through the host's tools service when it is reachable
+ * from this scope. The core row declares no `tools` dependency (the store must
+ * open even on a host with no tool layer), so this is a non-strict read and a
+ * silent no-op when the service is absent.
+ * @param {any} ctx
+ * @param {import('./permission/registry.js').PermissionRegistry} permissions
+ * @param {any} config
+ * @param {any} logger
+ * @returns {() => void} disposer (always callable)
+ */
+function installPermissionGuard(ctx, permissions, config, logger) {
+  if (config.registerPermissionGuard === false) return () => {}
+  const tools = typeof ctx.get === 'function' ? ctx.get('tools', false) : undefined
+  if (tools === undefined || tools === null || typeof tools.guard !== 'function') return () => {}
+  const disposer = tools.guard(createPermissionGuard({
+    permissions,
+    onDenied: (detail) => {
+      logger.warn?.(`anagenesis: refused ${detail.tool} (${detail.tier} tier, gear ${detail.gear}): ${detail.reason}`)
+    },
+  }))
+  return () => { if (typeof disposer === 'function') disposer() }
 }
 
 /**
@@ -457,7 +938,17 @@ export { InvariantViolation }
  * @property {StrategyEngine} engine
  * @property {Tuner} tuner
  * @property {ReturnType<typeof createMemoryOps>} ops
+ * @property {import('./permission/registry.js').PermissionRegistry} permissions
  * @property {{ stack: string[], tokenBudget: number }} defaults
+ * @property {(exec?: any, explicit?: any) => any} scopeFor
+ * @property {(exec?: any, explicit?: any) => any} writeScope
+ * @property {(record: any, exec?: any, crossProject?: boolean) => { ok: boolean, relation: string, reason: string }} canRead
+ * @property {(request?: any) => Promise<any>} listMemories
+ * @property {(exec?: any) => any} scopeReport
+ * @property {(exec?: any, extra?: any) => { text: string, data: any }} pulse
+ * @property {(exec?: any) => any} permissionReport
+ * @property {(gear: string, opts?: any) => Promise<any>} setGear
+ * @property {(sessionId: string, reason?: string) => Promise<any>} dropSession
  * @property {(request: object, opts?: object) => Promise<any>} recall
  * @property {() => any} status
  */

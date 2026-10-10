@@ -16,6 +16,7 @@
 
 import { FORGET_BUDGET } from '../memory/ops.js'
 import { TUNABLE_PREFIXES } from '../meta/tuner.js'
+import { SCOPE_TIERS, normalizeTier } from '../scope/project.js'
 
 export const MASS_DELETE_RATIO = 0.25
 
@@ -34,6 +35,53 @@ export class InvariantViolation extends Error {
  * @type {{ id: string, describe: string, check: (ctx: any) => null | { id: string, message: string } }[]}
  */
 export const INVARIANTS = [
+  {
+    id: 'scope.tagged',
+    describe: 'every memory written through a transaction must carry an explicit scope tier, and a project tier must name its project',
+    check: ({ patch }) => {
+      for (const [id, record] of Object.entries(patch.memorySet ?? {})) {
+        const scope = /** @type {any} */ (record)?.scope
+        const tier = String(scope?.tier ?? '')
+        if (!SCOPE_TIERS.includes(tier)) {
+          return {
+            id: 'scope.tagged',
+            message: `"${id}" carries no usable scope tier (got ${JSON.stringify(scope?.tier ?? null)}); every memory must be filed under global, project or session`,
+          }
+        }
+        if (tier === 'project' && (scope.projectId === null || scope.projectId === undefined || scope.projectId === '')) {
+          return {
+            id: 'scope.tagged',
+            message: `"${id}" is project-scoped but names no project; a project memory without a fingerprint is a global memory wearing a disguise`,
+          }
+        }
+        if (tier === 'session' && (scope.session === null || scope.session === undefined || scope.session === '')) {
+          return { id: 'scope.tagged', message: `"${id}" is session-scoped but names no session` }
+        }
+      }
+      return null
+    },
+  },
+  {
+    id: 'scope.no-silent-widening',
+    describe: 'widening a memory to global requires an explicit authorization on the call',
+    check: ({ state, patch, meta }) => {
+      const authorized = meta?.payload?.authorizeGlobal === true
+      for (const [id, next] of Object.entries(patch.memorySet ?? {})) {
+        const previous = state.memories[id]
+        if (previous === undefined) continue // a creation is not a widening
+        const from = normalizeTier(/** @type {any} */ (previous).scope)
+        const to = normalizeTier(/** @type {any} */ (next).scope)
+        if (to !== 'global') continue
+        if (from === 'global') continue
+        if (authorized) continue
+        return {
+          id: 'scope.no-silent-widening',
+          message: `"${id}" would be widened from ${from} to global without an explicit authorization (pass authorizeGlobal: true and a reason) — one project's experience is not a universal fact`,
+        }
+      }
+      return null
+    },
+  },
   {
     id: 'stack.guard-present',
     describe: 'every strategy stack must keep the invariant guard strategy',

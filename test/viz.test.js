@@ -431,6 +431,9 @@ test('viz: every model and tool-shaped payload is lossless JSON', async () => {
     for (const model of models) {
       assert.deepEqual(losslessIssues(model), [], `model ${model.kind} must survive a JSON round trip`)
     }
-    assert.deepEqual(DASHBOARD_SECTIONS.length, 8)
+    // Nine since scope isolation: the `scope` section sits right after
+    // `overview`, because "whose memory is this" is the second question a reader
+    // has about a dashboard that can now hold several projects.
+    assert.deepEqual(DASHBOARD_SECTIONS.length, 9)
   })
 })

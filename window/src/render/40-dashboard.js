@@ -39,6 +39,10 @@ const DASH_LABEL_ZH = Object.freeze({
   registered: '已注册策略',
   'pruned through seq': '剪枝至序号',
   '(no memories yet)': '（还没有记忆）',
+  'current project': '当前项目',
+  'default write tier': '默认写入档位',
+  gear: '权限档位',
+  'legacy untagged': '未标注的旧记忆',
 })
 
 /** 通用短语替换：嵌在自由文本里的固定说法。 */
@@ -139,9 +143,99 @@ function zhValue(label, value, model) {
       if (raw.indexOf('Ctrl+C') === 0) return '按 Ctrl+C 结束 · 该进程不写入存储'
       if (raw.indexOf('node tools/viz-watch.mjs') === 0) return '在真终端里跑 node tools/viz-watch.mjs --watch（独立只读进程）'
       return zhTokens(raw)
+    case 'current project':
+      return zhScopeProject(raw)
+    case 'default write tier':
+      return raw.indexOf('unknown') === 0 ? '未知（默认写入档位由实时服务决定）' : zhTier(raw)
+    case 'gear':
+      return zhScopeGear(raw)
+    case 'legacy untagged':
+      return zhScopeLegacy(raw)
     default:
       return zhTokens(raw)
   }
+}
+
+// ── 作用域分区 ────────────────────────────────────────────────────────────────
+//
+// 这一块的每一行都是**事实**，不是装饰：当前项目（含指纹依据）、每个命名空间
+// 各有多少条、没有显式指定时写到哪一层、预设给了什么档位、还有多少条旧记忆没有
+// 作用域。所以这里对未知形状的处理是"原样透出"，绝不悄悄换成好看的中文。
+
+/** 指纹依据：`remote` → 仓库，`path` → 路径。 */
+const BASIS_ZH = Object.freeze({ repo: '仓库', path: '路径' })
+
+/** 分区内每一行标签的悬停解释。 */
+const SCOPE_HINTS = Object.freeze({
+  'current project': '这次调用发生在哪个项目：短标签 + 命名空间 + 指纹依据（认的是 git remote 还是路径）',
+  'default write tier': '没有显式指定作用域时，新记忆写到哪一层',
+  gear: '预设授权的档位；档位决定哪些工具被注册（none = 只有只读面，写入类工具不存在）',
+  'legacy untagged': '作用域隔离之前写入、迁移时只能整体标成全局的记录；引用它们之前请按当前项目核对',
+})
+
+/**
+ * 这四行是**事实行**（值由 `src/viz/model.js` 的固定模板产出，走 `zhValue`）；
+ * 其余行是命名空间行，标签是命名空间 id —— 注意 `global` 既是命名空间 id 又是
+ * 词表里的标签，所以判据必须是"这四行之一"，不能是"标签在词表里"。
+ */
+const SCOPE_FACT_ROWS = Object.freeze(['current project', 'default write tier', 'gear', 'legacy untagged'])
+
+/**
+ * `x/a · project:p1_ab12cd (repo)` → `x/a · project:p1_ab12cd（仓库）`。
+ * 命名空间标识符原样保留：它是机器标识，要能跟 ana_scope / 日志段名对上。
+ * @param {unknown} raw @returns {string}
+ */
+function zhScopeProject(raw) {
+  const text = String(raw ?? '')
+  // 没有调用方（文件镜像 / 独立监视进程）：这是**未知**，不是"没有项目"。
+  if (text.indexOf('unknown') === 0) return '未知 —— 文件镜像没有调用方可推断'
+  const match = text.match(/^(.+?)\s+·\s+(\S+)\s+\((.+)\)$/)
+  if (match === null) return zhTokens(text)
+  const basis = Object.prototype.hasOwnProperty.call(BASIS_ZH, match[3]) ? BASIS_ZH[match[3]] : '来源未知'
+  return match[1] + ' · ' + match[2] + '（' + basis + '）'
+}
+
+/** `x/a · 12 record(s)` / `12 record(s)` → 中文。 */
+function zhScopeCount(raw) {
+  const text = String(raw ?? '')
+  const labelled = text.match(/^(.+?)\s+·\s+(\d+) record\(s\)$/)
+  if (labelled !== null) return labelled[1] + ' · ' + labelled[2] + ' 条'
+  const bare = text.match(/^(\d+) record\(s\)$/)
+  if (bare !== null) return bare[1] + ' 条'
+  return zhTokens(text)
+}
+
+/** 未标注旧记忆那一行。 */
+function zhScopeLegacy(raw) {
+  const text = String(raw ?? '')
+  const count = text.match(/^(\d+) record\(s\) written before scope isolation$/)
+  if (count !== null) return count[1] + ' 条写于作用域隔离之前'
+  if (text.indexOf('every record carries a scope') >= 0) return '0（每条记录都带 scope）'
+  return zhTokens(text)
+}
+
+/** 档位行：`exploit · write tools available` / `none (read-only mirror: …)`。 */
+function zhScopeGear(raw) {
+  const text = String(raw ?? '')
+  const live = text.match(/^(\S+)\s+·\s+(.+)$/)
+  if (live !== null) {
+    const ability = live[2].indexOf('write tools available') >= 0
+      ? '可写工具可用'
+      : live[2].indexOf('read-only') >= 0 ? '只读（无写入工具）' : zhTokens(live[2])
+    return live[1] + ' · ' + ability
+  }
+  const mirror = text.match(/^(\S+)\s+\(read-only mirror/)
+  if (mirror !== null) return mirror[1] + '（只读镜像：没有实时服务可报告档位）'
+  return zhTokens(text)
+}
+
+/** 档位行的副行：预设是否激活。 */
+function zhScopeNote(raw) {
+  const text = String(raw ?? '')
+  const active = text.match(/^preset (\S+) active$/)
+  if (active !== null) return '预设 ' + active[1] + ' 已激活：写入类工具已注册'
+  if (text.indexOf('no preset active') >= 0) return '预设未激活：写入类工具不会注册'
+  return zhTokens(text)
 }
 
 /** 模型里的告警句 → 中文。 */
@@ -323,10 +417,15 @@ function salienceSectionBody(section) {
   for (const item of rows) {
     index += 1
     const raw = String(item.value ?? '')
-    const match = raw.match(/^([\d.]+)\s+(\S+)\/(\S+)$/)
+    // `score kind/state` and, when the row has no body preview, a trailing
+    // `· <scope>` (see `src/viz/model.js`). That suffix is a memory's home, not
+    // part of the state — parse it out and show it as its own dim chip instead
+    // of letting it break the kind/state read.
+    const match = raw.match(/^([\d.]+)\s+(\S+)\/(\S+?)(?:\s+·\s+(\S+))?$/)
     const salience = match === null ? 0 : Number(match[1])
     const kind = match === null ? '' : match[2]
     const state = match === null ? '' : match[3]
+    const scope = match === null || match[4] === undefined ? '' : match[4]
     out.push('<div class="ana-rank">'
       + '<div class="ana-rank-no">' + index + '</div>'
       + '<div class="ana-rank-main"><div class="ana-rank-subject">' + esc(item.label) + '</div>'
@@ -336,6 +435,7 @@ function salienceSectionBody(section) {
       + '<div class="ana-chips">'
       + (kind === '' ? '' : chip(kindColor(kind), zhKind(kind)))
       + (state === '' ? '' : chip(stateColor(state), zhState(state), zhStateHint(state)))
+      + (scope === '' ? '' : chip('dim', scope, '这条记忆写在哪个作用域；不是当前项目的经验不要直接套用'))
       + '</div>'
       + '<div class="ana-meter" title="重要度 ' + salience.toFixed(2) + '（0–1，越高越容易被召回）">'
       + '<div class="ana-meter-fill" style="width:' + (Math.max(0, Math.min(1, salience)) * 100).toFixed(0) + '%"></div></div>'
@@ -343,6 +443,33 @@ function salienceSectionBody(section) {
       + '</div></div>')
   }
   if (out.length === 0) return emptyState('还没有可排行的记忆', '先让 agent 记住点什么')
+  return out.join('')
+}
+
+/**
+ * 作用域分区：当前项目 / 各命名空间条数 / 默认写入档位 / 预设档位 / 旧记忆。
+ *
+ * 命名空间行的**标签**是命名空间 id（`project:p1_ab12cd`、`global`、`session:…`），
+ * 不是界面文案 —— 它要能直接跟 `ana_scope` 的输出对上，所以原样保留、不翻译；
+ * 只有落在 `DASH_LABEL_ZH` 里的那四行标签才走中文词表。
+ * @param {any} section
+ * @returns {string}
+ */
+function scopeSectionBody(section) {
+  const rows = Array.isArray(section.rows) ? section.rows : []
+  const out = []
+  for (const item of rows) {
+    const label = String(item.label ?? '')
+    const isFact = SCOPE_FACT_ROWS.indexOf(label) >= 0
+    out.push(row({
+      label: zhLabel(label),
+      value: isFact ? zhValue(label, item.value, null) : zhScopeCount(item.value),
+      color: toneColor(item.tone),
+      hint: Object.prototype.hasOwnProperty.call(SCOPE_HINTS, label) ? SCOPE_HINTS[label] : '',
+      note: item.note === undefined || item.note === '' ? '' : zhScopeNote(item.note),
+    }))
+  }
+  if (out.length === 0) return emptyState('没有作用域信息', '这一屏读不到作用域报告')
   return out.join('')
 }
 
@@ -368,6 +495,7 @@ function plainSectionBody(section) {
 /** 每个分区用哪个渲染体。 */
 const SECTION_RENDERERS = Object.freeze({
   overview: (section) => plainSectionBody(section),
+  scope: (section) => scopeSectionBody(section),
   lifecycle: (section) => barSection(section, 'state'),
   kinds: (section) => barSection(section, 'kind'),
   strategy: (section) => strategySectionBody(section),

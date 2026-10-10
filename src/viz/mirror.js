@@ -22,12 +22,14 @@ import { join } from 'node:path'
 import { readJsonSync } from '../util.js'
 import { Journal } from '../store/journal.js'
 import { applyPatch } from '../store/patch.js'
-import { emptyState, migrateState } from '../store/schema.js'
+import { emptyState, isLegacyUnscoped, migrateState } from '../store/schema.js'
+import { namespaceCounts, parseNamespace, projectLabel } from '../scope/index.js'
 
 /**
  * @param {string} rootDir the store directory (the one holding `journal/` and `snapshot.json`)
  * @param {{ now?: () => number }} [opts]
- * @returns {Promise<{ rootDir: string, state: any, events: any[], journal: any, origin: 'mirror', readOnly: true }>}
+ * @returns {Promise<{ rootDir: string, state: any, events: any[], journal: any, origin: 'mirror',
+ *   readOnly: true, scope: any, permissions: any }>}
  */
 export async function readStoreMirror(rootDir, opts = {}) {
   const now = opts.now ?? (() => Date.now())
@@ -61,6 +63,69 @@ export async function readStoreMirror(rootDir, opts = {}) {
     journal: stats,
     origin: 'mirror',
     readOnly: true,
+    // A file mirror has no caller: it cannot know which project it is being read
+    // *from*. So it reports what the files do say — the shape of the store —
+    // and marks everything caller-specific as unknown instead of inventing a
+    // current project (which would silently hide other projects' records).
+    scope: mirrorScope(state, stats),
+    // Placeholder: `gear: 'none'` is the shape a real report has, and `mirror:
+    // true` tells the model to render "unknowable" rather than "no gear".
+    permissions: { gear: 'none', presetActive: false, mirror: true },
+  }
+}
+
+/**
+ * The scope report a *file* can produce: every namespace the store holds, with
+ * the project labels from `state.projects`, and no opinion about the caller.
+ * @param {any} state
+ * @param {any} journalStats
+ * @returns {any}
+ */
+function mirrorScope(state, journalStats) {
+  const counts = namespaceCounts(state)
+  /** @type {Record<string, any>} */
+  const namespaces = {}
+  for (const [namespace, count] of Object.entries(counts.byNamespace)) {
+    const parsed = parseNamespace(namespace)
+    namespaces[namespace] = {
+      count: Number(count) || 0,
+      tier: parsed.tier,
+      projectId: parsed.tier === 'project' ? parsed.key : null,
+      label: parsed.tier === 'project' ? projectLabel(state, parsed.key) : namespace,
+      current: false,
+    }
+  }
+  return {
+    current: {
+      known: false,
+      namespace: null,
+      tier: null,
+      projectId: null,
+      projectLabel: '',
+      basis: null,
+      root: null,
+      remote: null,
+      workspace: null,
+      session: null,
+    },
+    defaultScopeTier: null,
+    crossProjectDefault: null,
+    knownProjects: Object.values(state.projects ?? {}).map((entry) => ({
+      id: String(/** @type {any} */ (entry).id ?? ''),
+      label: String(/** @type {any} */ (entry).label ?? ''),
+      kind: String(/** @type {any} */ (entry).kind ?? ''),
+      root: String(/** @type {any} */ (entry).root ?? ''),
+      remote: String(/** @type {any} */ (entry).remote ?? ''),
+      firstSeenAt: Number(/** @type {any} */ (entry).firstSeenAt ?? 0),
+      lastSeenAt: Number(/** @type {any} */ (entry).lastSeenAt ?? 0),
+      current: false,
+      memories: counts.byNamespace[`project:${String(/** @type {any} */ (entry).id ?? '')}`] ?? 0,
+    })),
+    namespaces,
+    totals: counts.byTier,
+    legacy: Object.values(state.memories ?? {}).filter((record) => isLegacyUnscoped(record)).length,
+    journalNamespaces: journalStats?.byNamespace ?? {},
+    mirror: true,
   }
 }
 

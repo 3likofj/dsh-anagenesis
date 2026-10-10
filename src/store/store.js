@@ -17,7 +17,8 @@ import { join } from 'node:path'
 import { Mutex, atomicWriteFile, debounce, nowMs, readJsonSync } from '../util.js'
 import { Journal } from './journal.js'
 import { applyPatch, invertPatch, isEmptyPatch, mergePatches, touchedMemoryIds } from './patch.js'
-import { SCHEMA_VERSION, emptyState, migrateState } from './schema.js'
+import { SCHEMA_VERSION, emptyState, migrateState, recordNamespace } from './schema.js'
+import { GLOBAL_NAMESPACE } from '../scope/project.js'
 import { embed as defaultEmbed } from '../memory/embed.js'
 
 const SNAPSHOT_FILE = 'snapshot.json'
@@ -252,6 +253,12 @@ export class MemoryStore {
         ts,
         type: meta.type,
         scope: meta.scope ?? 'global',
+        // Which namespace's segment this event lands in. It is derived from the
+        // records the transaction actually touches, so the physical layout
+        // follows the data instead of the caller's claim — a write that says
+        // "scope: global" while touching a project record cannot smuggle that
+        // record into the global segment.
+        ns: meta.ns ?? namespaceOfPatch(before, merged),
         by: meta.by ?? 'agent',
         payload: meta.payload ?? null,
         patch: withStats,
@@ -333,16 +340,22 @@ export class MemoryStore {
    * transaction. That is the pattern `revert()` already uses for
    * `stats.reverts`: the operation that knows what happened owns its counter,
    * instead of the store guessing from the event's type string.
+   *
+   * `opts.payload` puts a machine-readable summary on the *event* as well as the
+   * human-readable detail on the audit row. Reactive consumers (the autonomy
+   * policies are the first) see events, not audit rows, so without this they
+   * would have to dig into `patch.auditAppend[0].detail` — a shape that is a
+   * storage detail, not an interface.
    * @param {string} type
    * @param {unknown} detail
-   * @param {{ scope?: string, by?: string, stats?: Record<string, number> }} [opts]
+   * @param {{ scope?: string, by?: string, stats?: Record<string, number>, payload?: unknown }} [opts]
    * @returns {Promise<any>}
    */
   async audit(type, detail, opts = {}) {
     return this.transact({
       auditAppend: [{ id: `aud_${this.#state.version + 1}`, at: this.#clock(), type, detail }],
       ...(opts.stats === undefined ? {} : { stats: opts.stats }),
-    }, { type: `audit:${type}`, scope: opts.scope ?? 'global', by: opts.by ?? 'agent' })
+    }, { type: `audit:${type}`, scope: opts.scope ?? 'global', by: opts.by ?? 'agent', payload: opts.payload ?? null })
   }
 
   /**
@@ -521,6 +534,7 @@ function freezeState(state) {
   return Object.freeze({
     ...state,
     memories: Object.freeze(state.memories),
+    projects: Object.freeze({ ...(state.projects ?? {}) }),
     strategies: Object.freeze(state.strategies),
     stacks: Object.freeze(Object.fromEntries(
       Object.entries(state.stacks).map(([scope, ids]) => [scope, Object.freeze([...ids])]),
@@ -540,6 +554,35 @@ function freezeState(state) {
       history: Object.freeze([...(state.tuning?.history ?? [])]),
     }),
   })
+}
+
+/**
+ * Which namespace segment a transaction belongs to.
+ *
+ * The rule is "follow the data, not the claim": the namespace is read off the
+ * records the patch touches (the post-record when there is one, otherwise the
+ * pre-record), so a transaction cannot name one namespace while moving another
+ * namespace's bytes. A transaction that genuinely spans namespaces — a revert of
+ * a mixed patch, a promote batch the agent assembled from two projects — is
+ * filed under `mixed` rather than being silently attributed to whichever record
+ * came first.
+ * @param {import('./schema.js').AnagenesisState} state
+ * @param {import('./patch.js').Patch} patch
+ * @returns {string}
+ */
+export function namespaceOfPatch(state, patch) {
+  const ids = touchedMemoryIds(patch)
+  let ns = null
+  for (const id of ids) {
+    const record = /** @type {any} */ (patch.memorySet ?? {})[id] ?? state.memories[id]
+    if (record === undefined) continue
+    const current = recordNamespace(record)
+    if (ns === null) ns = current
+    else if (ns !== current) return 'mixed'
+  }
+  // Audit-only, stack-only and param-only transactions belong to no project:
+  // they are store-level facts, and the global segment is where those live.
+  return ns ?? GLOBAL_NAMESPACE
 }
 
 /**

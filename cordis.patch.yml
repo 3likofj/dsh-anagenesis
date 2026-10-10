@@ -4,15 +4,26 @@
 #
 #   anagenesis-core     the service: store + strategy registry + engine + tuner.
 #                      Publishes `ctx.anagenesis`. No DSH tool/agent surface.
-#   anagenesis-tools    the agent-facing semantic memory tools (ana_*).
-#                      Binds to the service through `inject: ['tools','anagenesis']`.
-#   anagenesis-guard    the monotonic safety guardrail (ctx.tools.guard).
-#                      Registered globally; also reachable per agent scope.
+#   anagenesis-tools    the agent-facing **read** tools (ana_recall, ana_list,
+#                      ana_audit, ana_scope/ana_preset/ana_strategy/ana_tune
+#                      status views). No tool registered here writes a memory,
+#                      and that is the point: installing the plugin gives the
+#                      model eyes, not hands.
+#   anagenesis-guard    the monotonic safety guardrail (ctx.tools.guard) plus the
+#                      tier permission guard. Registered globally.
 #   anagenesis-preset   auto-registers the `anagenesis` agent preset through the
 #                      `agentPresets` service (directory fallback on old hosts).
 #   anagenesis-viz      the read-only visualization row: `ana_dashboard` (TUI
 #                      frame) + `ana_diagram` (mermaid/d2/ascii). No service, no
 #                      timers, no writes unless auditRenders is turned on.
+#
+# NOT in this bundle, on purpose: `dsh-anagenesis/tools-gated`. The write-tier
+# tools (ana_remember, ana_promote, ana_demote, ana_lock, ana_expire, ana_split,
+# ana_rethink, ana_forget, ana_link, ana_feedback) are registered only inside the
+# `anagenesis` preset's own composition, together with the grant that authorizes
+# them. Without the preset they do not exist for the model at all — which is the
+# structural fix for "memories were written with no preset enabled", and it is
+# also what the tier guard enforces at execution time.
 #
 # Separate rows mean a broken meta-layer cannot take the memory layer down with
 # it: `disabled: true` on `anagenesis-guard` is a one-line kill switch, and

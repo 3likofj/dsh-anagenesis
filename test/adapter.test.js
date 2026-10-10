@@ -16,13 +16,39 @@ import { join } from 'node:path'
 
 import { apply as coreApply, Config as CoreConfig, compactionPolicy, defaultRootDir } from '../src/index.js'
 import { apply as toolsApply, Config as ToolsConfig } from '../src/tools/index.js'
+import { apply as gatedApply, Config as GatedConfig } from '../src/tools/gated.js'
 import { apply as guardApply, Config as GuardConfig } from '../src/guard/index.js'
-import { apply as presetApply, Config as PresetConfig, hasPresetRegistry } from '../src/preset/index.js'
+import { apply as presetApply, Config as PresetConfig, hasPresetRegistry, GENERATED_MARKER } from '../src/preset/index.js'
 import { apply as bindApply } from '../src/preset/bind.js'
 import { apply as vizApply, Config as VizConfig } from '../src/viz/index.js'
+import { createPermissions } from '../src/permission/registry.js'
 import { losslessProblem } from './lossless.mjs'
 
 const quiet = { info() {}, warn() {}, debug() {} }
+
+/**
+ * The read tier: what a session gets when the plugin is installed and no preset
+ * is enabled. Pinned as a list rather than a count, because "exactly these, and
+ * none of them writes" is the security property under test.
+ */
+const READ_TOOLS = Object.freeze(['ana_audit', 'ana_list', 'ana_preset', 'ana_recall', 'ana_scope', 'ana_strategy', 'ana_tune'])
+/** The write tier: registered only by the gated row, i.e. only inside a preset. */
+const WRITE_TOOLS = Object.freeze([
+  'ana_demote', 'ana_expire', 'ana_feedback', 'ana_forget', 'ana_link', 'ana_lock',
+  'ana_remember', 'ana_promote', 'ana_rethink', 'ana_split',
+])
+
+/**
+ * Mount the `anagenesis` preset the way the real composition does: the gated
+ * tool row plus the bind row. Everything that writes needs this, which is the
+ * point of the refactor.
+ * @param {{ ctx: any }} host
+ * @param {string} [gear]
+ */
+async function mountPreset(host, gear = 'assisted') {
+  gatedApply(host.ctx, { gear, scopeKey: 'preset:anagenesis' })
+  await bindApply(host.ctx, { stack: ['guard', 'exploit'], tokenBudget: 1600, gear, scope: 'global' })
+}
 
 /**
  * A host stub with exactly the surface the rows use.
@@ -117,7 +143,7 @@ test('adapters: the compaction policy maps host config onto the journal options,
   assert.equal(junk.retain.events, 0)
 })
 
-test('adapters: core publishes ctx.anagenesis and the tool row registers the whole ana_* surface', async () => {
+test('adapters: the always-on row is read-only, and the write tier only exists inside the preset', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ana-adapter-'))
   const host = makeHost()
   try {
@@ -127,13 +153,9 @@ test('adapters: core publishes ctx.anagenesis and the tool row registers the who
 
     toolsApply(host.ctx, {})
     const names = [...host.tools.keys()].sort()
-    assert.equal(names.length, 14, `expected 14 tools, got ${names.length}: ${names.join(', ')}`)
-    for (const required of [
-      'ana_recall', 'ana_remember', 'ana_promote', 'ana_demote', 'ana_lock', 'ana_expire',
-      'ana_split', 'ana_rethink', 'ana_forget', 'ana_strategy', 'ana_tune', 'ana_feedback',
-      'ana_audit', 'ana_link',
-    ]) {
-      assert.ok(names.includes(required), `missing tool ${required}`)
+    assert.deepEqual(names, [...READ_TOOLS].sort(), `the unconditional surface must be exactly the read tier: ${names.join(', ')}`)
+    for (const forbidden of WRITE_TOOLS) {
+      assert.equal(names.includes(forbidden), false, `${forbidden} must not exist without the preset`)
     }
     for (const [, definition] of host.tools) {
       assert.equal(typeof definition.execute, 'function', `${definition.name} has execute`)
@@ -142,7 +164,16 @@ test('adapters: core publishes ctx.anagenesis and the tool row registers the who
     }
 
     guardApply(host.ctx, {})
-    assert.equal(host.guards.length, 1, 'one monotonic guard installed')
+    assert.equal(host.guards.length, 2, 'two monotonic guards: the argument guard and the tier guard')
+
+    // Now the preset: the gated row adds the write tier, and its grant is what
+    // makes those tools answer.
+    await mountPreset(host)
+    const withPreset = [...host.tools.keys()].sort()
+    for (const required of WRITE_TOOLS) {
+      assert.ok(withPreset.includes(required), `the preset must expose ${required}`)
+    }
+    assert.equal(withPreset.length, READ_TOOLS.length + WRITE_TOOLS.length)
 
     await disposeHost(host)
   } finally {
@@ -157,6 +188,11 @@ test('adapters: a full agent round-trip through the registered tools', async () 
     await coreApply(host.ctx, { rootDir: dir })
     toolsApply(host.ctx, {})
     guardApply(host.ctx, {})
+    // The write tier and the admin actions this test exercises come from the
+    // preset. Mounting it is what a real session does when the user enables
+    // `anagenesis`; without it, `ana_remember` does not exist.
+    await mountPreset(host, 'autonomous')
+    const seqBeforeWrite = host.services.anagenesis.store.version
     const callRaw = (name, args, exec = {}) => host.tools.get(name).execute(args, exec)
     // Every answer this test sees is checked the way the real host checks it: a
     // round trip through JSON must not lose anything, otherwise the host rejects
@@ -178,7 +214,11 @@ test('adapters: a full agent round-trip through the registered tools', async () 
     })
     assert.equal(remembered.state, 'active')
     assert.ok(remembered.decidedBy.includes('exploit'))
-    assert.equal(remembered.seq, 1)
+    // Relative, not absolute: mounting the preset is three transactions of its
+    // own (gear, stack, budget), and the property under test is "the write is the
+    // next transaction", not "the store was empty".
+    assert.equal(remembered.seq, seqBeforeWrite + 1, 'the commit is the next seq after the preset bind')
+    assert.equal(remembered.scope, 'project:' + host.services.anagenesis.scopeFor({}).identity.id.slice(0, 12), 'a write with no explicit scope lands in the current project')
 
     // 2. recall by intent
     const recalled = await call('ana_recall', { intent: 'orient', query: 'journal append-only' })
@@ -286,6 +326,7 @@ test('adapters: the lifetime counters move with the operations that own them, an
   try {
     await coreApply(host.ctx, { rootDir: dir })
     toolsApply(host.ctx, {})
+    await mountPreset(host)
     const call = async (name, args, exec = {}) => {
       const value = await host.tools.get(name).execute(args, exec)
       assert.equal(losslessProblem(value, `${name} output`), null)
@@ -328,7 +369,7 @@ test('adapters: the viz row adds two read-only tools, and withdrawing it leaves 
     toolsApply(host.ctx, {})
     guardApply(host.ctx, {})
     const coreTools = [...host.tools.keys()].sort()
-    assert.equal(coreTools.length, 14, 'the tools row owns the fourteen')
+    assert.equal(coreTools.length, READ_TOOLS.length, 'the always-on row owns the read tier only')
     assert.ok(VizConfig !== undefined, 'the viz row declares a Config schema')
 
     // The stub host does not collect registration disposers into a fibre the way
@@ -346,7 +387,7 @@ test('adapters: the viz row adds two read-only tools, and withdrawing it leaves 
       [...coreTools, 'ana_dashboard', 'ana_diagram'].sort(),
       'the viz row adds exactly its two tools',
     )
-    assert.equal(host.guards.length, 1, 'and no guard: visualization is not a safety layer')
+    assert.equal(host.guards.length, 2, 'and no guard of its own: the two guards belong to the guard row, not to visualization')
     assert.equal(host.services['anagenesis-viz'], undefined, 'and no service — ctx.provide would collide in the preset scope')
 
     const call = async (name, args, exec = {}) => {
@@ -414,13 +455,21 @@ test('adapters: ana_recall honours a caller token budget even under explore mode
   try {
     await coreApply(host.ctx, { rootDir: dir })
     toolsApply(host.ctx, {})
+    // `ana_strategy action="switch"` is an admin-tier action, so this test needs
+    // the preset that grants it — which is also the honest reproduction of a
+    // session that is allowed to change its own cognitive mode.
+    await mountPreset(host, 'autonomous')
     const call = (name, args) => host.tools.get(name).execute(args, {})
     for (let index = 0; index < 6; index++) {
       await call('ana_remember', { kind: 'fact', subject: `fact ${index}`, body: 'x'.repeat(200), confidence: 0.8 })
     }
     await call('ana_strategy', { action: 'switch', id: 'explore' })
     const tight = await call('ana_recall', { intent: 'orient', maxTokens: 120 })
-    assert.ok(tight.tokens <= 200, `expected a tight block, got ${tight.tokens} tokens`)
+    // `maxTokens` governs the memory block. The status pulse is not memory and
+    // does not spend that budget — it is reported separately so either line can
+    // be held (`memoryTokens` for the budget, `tokens` for the whole answer).
+    assert.ok(tight.memoryTokens <= 160, `expected a tight memory block, got ${tight.memoryTokens} tokens`)
+    assert.ok(tight.tokens - tight.memoryTokens <= 120, 'the pulse must stay small: it is injected every step')
     await disposeHost(host)
   } finally {
     await rm(dir, { recursive: true, force: true })
@@ -461,6 +510,7 @@ test('adapters: every row apply resolves to an effect-legal value', async () => 
     const results = [
       ['anagenesis-core', await coreApply(host.ctx, { rootDir: dir })],
       ['anagenesis-tools', await toolsApply(host.ctx, {})],
+      ['anagenesis-tools-gated', await gatedApply(host.ctx, {})],
       ['anagenesis-guard', await guardApply(host.ctx, {})],
       ['anagenesis-preset', await presetApply(host.ctx, { autoInstallDirectoryForm: false })],
     ]
@@ -474,7 +524,7 @@ test('adapters: every row apply resolves to an effect-legal value', async () => 
     // The core row's service must survive its own apply, and a dependent row
     // must actually start — the two symptoms the live boot lost.
     assert.ok(host.services.anagenesis, 'ctx.provide("anagenesis") survived apply')
-    assert.equal(host.tools.size, 14, 'dependent tool row started and registered its tools')
+    assert.equal(host.tools.size, READ_TOOLS.length + WRITE_TOOLS.length, 'both tool rows started and registered their tiers')
     await disposeHost(host)
   } finally {
     await rm(dir, { recursive: true, force: true })
@@ -489,7 +539,16 @@ test('adapters: preset-bind settles its bind before apply resolves, and disposes
   //    which reverted the activated stack twice and put the old one back.
   const calls = []
   const host = makeHost()
+  const permissions = createPermissions({ logger: quiet })
   host.services.anagenesis = {
+    permissions,
+    setGear: async (gear) => {
+      calls.push(['setGear', gear])
+      const change = permissions.setGear(gear, { force: true, reason: 'test' })
+      return { gear, previous: change.previous, seq: 3, revert: async () => { calls.push(['revert-gear']); change.dispose() } }
+    },
+    scopeFor: () => ({ namespace: 'project:test', scope: { session: null } }),
+    pulse: () => ({ text: '<anagenesis-pulse/>', data: {} }),
     registry: {
       stack: () => ['guard', 'exploit'],
       setStack: async (ids) => {
@@ -509,15 +568,17 @@ test('adapters: preset-bind settles its bind before apply resolves, and disposes
   assert.equal(resolved, undefined, 'a row must not resolve to a value Cordis would collect as an effect')
   assert.deepEqual(calls[0], ['setStack', ['guard', 'debug']], 'the bind is awaited, not fired and forgotten')
   assert.ok(calls.some(([name]) => name === 'transact'), 'the budget write landed before apply resolved')
+  assert.ok(calls.some(([name, gear]) => name === 'setGear' && gear === 'assisted'), 'and the gear was declared before apply resolved')
 
   await disposeHost(host)
   // Both writes must be compensated, newest first. Dropping the budget undo left
   // `recall.orient.tokenBudget` pinned in the scope after every preset unload —
   // the real journal recorded three unloads that reverted only the stack.
+  // The gear revert is registered last, so it is unwound first.
   assert.deepEqual(
     calls.filter(([name]) => name.startsWith('revert')),
-    [['revert-budget'], ['revert-stack']],
-    'unload undoes the budget write and the activation, newest first',
+    [['revert-gear'], ['revert-budget'], ['revert-stack']],
+    'unload releases the gear, then undoes the budget write and the activation, newest first',
   )
 })
 

@@ -13,18 +13,31 @@
 
 import { clamp, estimateTokens, hash32, nowMs, stableStringify, ulid } from '../util.js'
 import { CONFIDENCE_FLOOR, createMemory, canTransition, effectiveSalience } from '../store/schema.js'
+import { namespaceOf, normalizeTier, scopeLabel } from '../scope/project.js'
 import { embed as defaultEmbed } from './embed.js'
 
 /** Maximum records a single destructive call may touch (guardrail input). */
 export const FORGET_BUDGET = 50
 
 /**
- * @param {{ store: import('../store/store.js').MemoryStore, embed?: (t: string) => number[], clock?: () => number, logger?: any }} deps
+ * @param {{ store: import('../store/store.js').MemoryStore, embed?: (t: string) => number[], clock?: () => number, logger?: any,
+ *   defaultScope?: (() => any) | any, projectRegistry?: (state: any, scope: any, now: number) => any }} deps
+ *   `defaultScope` is what "no explicit scope" now means. The service passes the
+ *   caller's project fingerprint, so a write with no scope is filed under *this
+ *   project* — the single change that removes the old "everything is global"
+ *   default. A caller that constructs ops directly (tests, the standalone
+ *   tooling) keeps the historical global default, which is why this is an
+ *   injection point rather than a constant.
+ *   `projectRegistry` turns "this record belongs to a project we have not seen
+ *   before" into the invertible `projectSet` patch that gives that fingerprint a
+ *   human-readable label. Optional: without it a store still isolates correctly,
+ *   it just cannot print the other project's name.
  */
 export function createMemoryOps(deps) {
   const store = deps.store
   const embed = deps.embed ?? ((text) => defaultEmbed(text))
   const now = deps.clock ?? nowMs
+  const defaultScope = typeof deps.defaultScope === 'function' ? deps.defaultScope : () => deps.defaultScope
 
   /**
    * @param {{ id: string }} args
@@ -36,24 +49,49 @@ export function createMemoryOps(deps) {
     return record
   }
 
+  /** @returns {any} the scope a write lands in when the caller named none */
+  function fallbackScope() {
+    const resolved = defaultScope()
+    if (resolved === undefined || resolved === null) return { tier: 'global', origin: 'legacy-default' }
+    return resolved
+  }
+
   return {
     /** @type {(spec: any, opts?: { scope?: string, by?: string }) => Promise<any>} */
     async remember(spec, opts = {}) {
-      const record = createMemory(spec, { now: now(), embed, sessionId: spec.scope?.session, presetId: spec.scope?.preset })
-      // Idempotence guard: the same content at the same state is a no-op, so a
-      // retrying agent does not flood the store with duplicates.
+      const fallback = fallbackScope()
+      const record = createMemory(spec, {
+        now: now(),
+        embed,
+        sessionId: spec.scope?.session ?? fallback.sessionId ?? null,
+        presetId: spec.scope?.preset ?? fallback.presetId ?? null,
+        defaultScope: fallback,
+      })
+      // Idempotence guard, **per namespace**: the same sentence written in two
+      // projects is two memories, not a dedupe hit — collapsing them would make
+      // one project's assertion literally unreachable from the other. Inside one
+      // namespace the original behaviour stands: a retrying agent does not flood
+      // the store with duplicates.
+      const ns = namespaceOf(record.scope)
       const fingerprint = stableStringify({ k: record.kind, s: record.subject, b: record.body })
       for (const existing of Object.values(store.state.memories)) {
         if (existing.state === 'retired') continue
+        if (namespaceOf(existing.scope) !== ns) continue
         if (stableStringify({ k: existing.kind, s: existing.subject, b: existing.body }) === fingerprint) {
           // No seq: this call wrote nothing, and the previous version returned
           // `store.state.version` — the seq of whatever transaction happened
           // last, so a caller reverting "its own write" undid someone else's.
-          return { ok: true, id: existing.id, deduplicated: true }
+          // The existing record comes back so the caller can label the scope it
+          // actually landed in.
+          return { ok: true, id: existing.id, deduplicated: true, namespace: ns, record: existing }
         }
       }
+      const projectPatch = deps.projectRegistry === undefined
+        ? null
+        : deps.projectRegistry(store.state, record.scope, now())
       const result = await store.transact({
         memorySet: { [record.id]: record },
+        ...(projectPatch ?? {}),
         // `stats.writes` counts successful memory commits, folded into the commit
         // itself so the counter cannot drift from the journal.
         stats: { writes: (store.state.stats?.writes ?? 0) + 1 },
@@ -61,9 +99,9 @@ export function createMemoryOps(deps) {
         type: 'memory.remember',
         scope: opts.scope ?? record.scope.session ?? 'global',
         by: opts.by ?? 'agent',
-        payload: { id: record.id, kind: record.kind, state: record.state, gist: record.gist },
+        payload: { id: record.id, kind: record.kind, state: record.state, gist: record.gist, namespace: ns },
       })
-      return { ok: true, id: record.id, seq: result.seq, record: store.state.memories[record.id], revert: result.revert }
+      return { ok: true, id: record.id, seq: result.seq, record: store.state.memories[record.id], namespace: ns, revert: result.revert }
     },
 
     /**
@@ -264,6 +302,76 @@ export function createMemoryOps(deps) {
     },
 
     /**
+     * Re-file a set of memories under a different scope — the correction
+     * primitive of the isolation layer.
+     *
+     * 隔离层的第一个版本必然会遇到两类记录：迁移进来的、归属不明的旧记忆，
+     * 以及写错了作用域的新记忆。没有修正原语的话，它们只能被遗忘或永远错下去。
+     * 所以 `retag` 是一笔**普通事务**：它改的是记录的 scope 标签，因此
+     * `revert(seq)` 精确撤回它，`ana_audit view=memory` 也能看出它被改过。
+     *
+     * 一条硬规则：**项目级记忆不能被提升为全局记忆，除非显式授权**
+     * （`authorizeGlobal: true` + 理由）。把某个项目的经验说成"全世界通用"是
+     * 这次改造要防的那个错误，所以它不能发生在一次顺手的调用里。
+     * @type {(args: { ids: string[], tier: string, projectId?: string|null, sessionId?: string|null,
+     *   reason: string, authorizeGlobal?: boolean }) => Promise<any>}
+     */
+    async retag({ ids, tier, projectId = null, sessionId = null, reason, authorizeGlobal = false }) {
+      if (!Array.isArray(ids) || ids.length === 0) throw new Error('anagenesis: retag needs at least one memory id')
+      if (typeof reason !== 'string' || reason.trim().length < 3) {
+        throw new Error('anagenesis: retag requires a reason of at least 3 characters')
+      }
+      if (!['global', 'project', 'session'].includes(String(tier))) {
+        throw new Error(`anagenesis: retag cannot target tier "${tier}" (allowed: global, project, session)`)
+      }
+      if (tier === 'project' && (projectId === null || projectId === '')) {
+        throw new Error('anagenesis: retag to tier "project" needs a projectId')
+      }
+      if (tier === 'session' && (sessionId === null || sessionId === '')) {
+        throw new Error('anagenesis: retag to tier "session" needs a sessionId')
+      }
+      const ts = now()
+      const patch = { memorySet: {} }
+      /** @type {{ id: string, from: string, to: string }[]} */
+      const changes = []
+      for (const id of ids) {
+        const record = mustGet(id)
+        if (record.state === 'retired') continue
+        const from = normalizeTier(record.scope)
+        if (from === tier && tier !== 'project' && tier !== 'session') continue
+        // Global is the one *widening* move, and it is the one that needs an
+        // explicit authorization: everything else narrows the blast radius.
+        if (tier === 'global' && from !== 'global' && authorizeGlobal !== true) {
+          throw new Error(`anagenesis: refusing to promote "${id}" to global — a project's experience is not universal without an explicit authorization (pass authorizeGlobal: true and say why)`)
+        }
+        changes.push({ id, from, to: tier })
+        patch.memorySet[id] = {
+          ...record,
+          scope: {
+            ...record.scope,
+            tier,
+            projectId: tier === 'project' ? String(projectId) : null,
+            session: tier === 'session' ? String(sessionId) : null,
+            global: tier === 'global',
+            origin: 'retag',
+          },
+          updatedAt: ts,
+          provenance: {
+            ...record.provenance,
+            evidence: [...record.provenance.evidence, `retagged ${from} -> ${tier}: ${reason}`].slice(-32),
+          },
+        }
+      }
+      if (changes.length === 0) return { ok: true, ids: [], to: tier, seq: undefined, noop: true, changes: [] }
+      const result = await store.transact(patch, {
+        type: 'memory.retag',
+        scope: tier === 'global' ? 'global' : 'project',
+        payload: { ids, to: tier, projectId, sessionId, reason, authorizeGlobal, changes },
+      })
+      return { ok: true, ids: changes.map((row) => row.id), to: tier, seq: result.seq, changes, revert: result.revert }
+    },
+
+    /**
      * @type {(args: { from: string, to: string, rel: string }) => Promise<any>}
      */
     async link({ from, to, rel }) {
@@ -370,7 +478,10 @@ export function createMemoryOps(deps) {
       const result = await store.transact(patch, {
         type: 'memory.usage',
         scope,
-        payload: { used: usedIds.length, ignored: ignoredIds.length, scope },
+        // The ids ride along in the payload, bounded, because the reactivity the
+        // autonomy layer needs is "which memories were actually cited" — a count
+        // cannot decide whether a draft has been established.
+        payload: { used: usedIds.length, ignored: ignoredIds.length, scope, usedIds: usedIds.slice(0, 20) },
       })
       return { ok: true, seq: result.seq, revert: result.revert }
     },

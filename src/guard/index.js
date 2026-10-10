@@ -17,6 +17,7 @@
 
 import Schema from '@deepseek-ai/schemastery'
 import { createToolGuard } from './invariants.js'
+import { createPermissionGuard } from '../permission/guard.js'
 
 export const name = 'anagenesis-guard'
 
@@ -73,10 +74,35 @@ export function apply(ctx, config = {}) {
     }
   }))
 
+  // The second, independent layer: **tier permission**. The first guard sees
+  // arguments and refuses dangerous *shapes*; this one refuses whole classes of
+  // action when no preset grant is live, which is the enforcement half of "the
+  // preset is a permission layer, not a suggestion".
+  //
+  // It is registered through a proxy rather than by capturing the registry, so a
+  // service replacement (a remount, a host that re-settles this row) cannot leave
+  // the guard holding a dead reference — the very failure mode this row exists to
+  // prevent.
+  const permissionDisposer = /** @type {any} */ (ctx.tools.guard(createPermissionGuard({
+    permissions: {
+      check: (name, args) => service().permissions.check(name, args),
+      gear: () => service().permissions.gear(),
+    },
+    onDenied: (detail) => {
+      void service().store.audit('guard.denied', {
+        tool: detail.tool,
+        tier: detail.tier,
+        gear: detail.gear,
+        reason: detail.reason,
+      }, { by: 'guard' }).catch(() => {})
+    },
+  })))
+
   ctx.effect(() => {
-    logger?.info?.('anagenesis-guard: monotonic tool guard installed')
+    logger?.info?.('anagenesis-guard: monotonic tool guard + tier permission guard installed')
     return () => {
       if (typeof guardDisposer === 'function') guardDisposer()
+      if (typeof permissionDisposer === 'function') permissionDisposer()
     }
   })
 }

@@ -25,6 +25,13 @@ export const PARAM_ENVELOPE = Object.freeze({
   'recall.halfLifeMs': { min: 600_000, max: 90 * 24 * 3600 * 1000, step: 600_000, default: 14 * 24 * 3600 * 1000 },
   'recall.explorationRate': { min: 0, max: 0.6, step: 0.05, default: 0.25 },
   'recall.diversity': { min: 0, max: 0.9, step: 0.05, default: 0.25 },
+  // The two scope-isolation knobs. They are tunable on purpose: how much a
+  // project should trust *another* project's experience is exactly the kind of
+  // thing that has to be learned from results rather than decided once. The
+  // ceiling on `crossProjectFactor` is 1 and not more, because "another project
+  // ranks equal to this one" is the failure this whole change exists to remove.
+  'recall.scopeWeight': { min: 0, max: 0.4, step: 0.02, default: 0.12 },
+  'recall.crossProjectFactor': { min: 0, max: 1, step: 0.05, default: 0.4 },
   'recall.orient.tokenBudget': { min: 256, max: 8000, step: 128, default: 1200 },
   'recall.recall_precedent.tokenBudget': { min: 256, max: 8000, step: 128, default: 1800 },
   'recall.recall_precedent.minConfidence': { min: 0, max: 0.7, step: 0.05, default: 0.3 },

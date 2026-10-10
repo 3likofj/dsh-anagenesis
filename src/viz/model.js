@@ -23,14 +23,24 @@
  * @module dsh-anagenesis/viz/model
  */
 
-import { KINDS, STATES, LIVE_STATES, effectiveSalience } from '../store/schema.js'
+import { KINDS, STATES, LIVE_STATES, effectiveSalience, isLegacyUnscoped } from '../store/schema.js'
 import { PARAM_ENVELOPE } from '../meta/tuner.js'
 import { inScope } from '../memory/recall.js'
+import {
+  GLOBAL_NAMESPACE,
+  createScopeFilter,
+  namespaceCounts,
+  parseNamespace,
+  projectLabel,
+  scopeLabel,
+  scopeMatch,
+  scopeRelation,
+} from '../scope/index.js'
 import { DEFAULT_REDACTION, redactRecord, redactionNote } from './redact.js'
 import { terminalText } from './lang.js'
 
 export const DASHBOARD_SECTIONS = Object.freeze([
-  'overview', 'lifecycle', 'kinds', 'strategy', 'tuning', 'journal', 'salience', 'viz',
+  'overview', 'scope', 'lifecycle', 'kinds', 'strategy', 'tuning', 'journal', 'salience', 'viz',
 ])
 
 export const DIAGRAM_KINDS = Object.freeze(['memory-graph', 'strategy-timeline', 'lifecycle'])
@@ -62,6 +72,14 @@ const DEFAULT_LIMITS = Object.freeze({ events: 8, salience: 5, timeline: 12, nod
  * @property {any} [tuning] `service.tuner.report()`
  * @property {any} [selfStatus] `{ renders, diagrams, lastAt, errors, mode }`
  * @property {string} [origin] 'live' | 'mirror'
+ * @property {any} [scope] `service.scopeReport()`: where this caller stands
+ *   (project fingerprint, namespace, default write tier) and every namespace the
+ *   store physically holds. When it is present the model prefers it over
+ *   re-deriving anything from `state.projects`.
+ * @property {any} [permissions] `service.permissionReport()`: preset, gear and
+ *   whether write tools are registered. A read-only mirror or the standalone
+ *   watcher has no live service and passes nothing (or a `mirror: true`
+ *   placeholder) — the gear row then says so instead of guessing.
  */
 
 /**
@@ -77,10 +95,15 @@ export function buildDashboardModel(source, opts = {}) {
   const t = terminalText(opts.lang)
   const warnings = collectWarnings(source, opts, limits, t)
   const wanted = Array.isArray(opts.sections) && opts.sections.length > 0 ? opts.sections : DASHBOARD_SECTIONS
-  const context = { state, source, opts, limits, redaction, now, warnings, t, selfStatus: opts.selfStatus ?? source.selfStatus ?? {} }
+  const scopeView = buildScopeView(state, source, opts)
+  const context = {
+    state, source, opts, limits, redaction, now, warnings, t, scopeView,
+    selfStatus: opts.selfStatus ?? source.selfStatus ?? {},
+  }
 
   const builders = {
     overview: overviewSection,
+    scope: scopeSection,
     lifecycle: lifecycleSection,
     kinds: kindsSection,
     strategy: strategySection,
@@ -105,6 +128,7 @@ export function buildDashboardModel(source, opts = {}) {
     generatedAt: now,
     origin: source.origin ?? 'live',
     store: storeFacts(state),
+    scope: modelScope(scopeView),
     sections,
     warnings,
     limits: { events: limits.events, salience: limits.salience, nodes: limits.nodes },
@@ -126,6 +150,8 @@ export function buildDiagramModel(source, opts = {}) {
   const now = typeof opts.now === 'number' ? opts.now : Date.now()
   const t = terminalText(opts.lang)
   const warnings = collectWarnings(source, opts, limits, t)
+  const scopeView = buildScopeView(state, source, opts)
+  const records = visibleRecords(state, scopeView.opts)
 
   const base = {
     kind,
@@ -133,11 +159,21 @@ export function buildDiagramModel(source, opts = {}) {
     generatedAt: now,
     origin: source.origin ?? 'live',
     store: storeFacts(state),
+    scope: modelScope(scopeView),
     nodes: [],
     edges: [],
     timeline: [],
     transitions: [],
-    totals: { byState: countBy(visibleRecords(state, opts), (record) => record.state), byKind: countBy(visibleRecords(state, opts), (record) => record.kind), byEventType: countEventTypes(source.events ?? []) },
+    totals: {
+      byState: countBy(records, (record) => record.state),
+      byKind: countBy(records, (record) => record.kind),
+      byEventType: countEventTypes(source.events ?? []),
+      // Counts by *relation to this caller* (current-project / other-project /
+      // global / current-session / …). With no caller context at all every
+      // project record reads as `other-project` — `model.scope.current.known`
+      // says whether the relation was computed against a real caller.
+      byScope: countBy(records, (record) => relationOf(record, scopeView.context)),
+    },
     warnings,
     limits: { nodes: limits.nodes, timeline: limits.timeline },
     redaction: { level: redaction, note: redactionNote(redaction, opts) },
@@ -145,7 +181,7 @@ export function buildDiagramModel(source, opts = {}) {
   }
 
   if (kind === 'memory-graph') {
-    const graph = memoryGraph(state, opts, limits, redaction, t)
+    const graph = memoryGraph(state, scopeView.opts, limits, redaction, t, scopeView.context)
     base.nodes = graph.nodes
     base.edges = graph.edges
     base.warnings.push(...graph.warnings)
@@ -193,19 +229,42 @@ export function totalLive(state, scopeKey = 'global') {
 }
 
 /**
- * Records visible to a caller. With no `scope` filter the whole store is shown —
- * it is the caller's own store; the filter exists so a scoped session can look
- * at just what it can recall.
+ * Records visible to a caller.
+ *
+ * Three mutually exclusive shapes, in this order:
+ *   1. `opts.scopeContext = { projectId, sessionId, allProjects }` — the closed
+ *      set the caller can actually recall (`scopeMatch`): current project,
+ *      global, current session, and — only when `allProjects` is explicitly
+ *      true — other projects, still marked as foreign. Session-scoped records
+ *      stay inside their session even then: another session's working state is
+ *      not "another project's experience" and no switch makes it visible.
+ *   2. `opts.scope` (the legacy `{ session, workspace, preset }` object) — the
+ *      pre-isolation contract, kept for callers that still pass it. It can only
+ *      narrow the set further, never widen it.
+ *   3. Neither — the whole store. This is the operator's own view (the file
+ *      mirror and the standalone watcher have no caller to scope by), and it is
+ *      what every pre-scope caller of this function already got.
  * @param {any} state
  * @param {any} opts
  * @returns {any[]}
  */
 export function visibleRecords(state, opts = {}) {
   const records = Object.values(state.memories ?? {})
-  const filter = opts.scope
-  if (filter === undefined || filter === null) return records
-  const plan = { scope: /** @type {any} */ (filter) }
-  return records.filter((record) => inScope(/** @type {any} */ (record), plan))
+  const context = opts?.scopeContext
+  const legacy = opts?.scope
+  let out = records
+  if (context !== undefined && context !== null) {
+    const filter = createScopeFilter({
+      projectId: context.projectId ?? null,
+      sessionId: context.sessionId ?? null,
+      crossProject: context.allProjects === true,
+    })
+    out = out.filter((record) => scopeMatch(/** @type {any} */ (record), filter).ok)
+  }
+  if (legacy !== undefined && legacy !== null) {
+    out = out.filter((record) => inScope(/** @type {any} */ (record), { scope: legacy }))
+  }
+  return out
 }
 
 /**
@@ -235,6 +294,260 @@ export function countEventTypes(events) {
     out[type] = (out[type] ?? 0) + 1
   }
   return out
+}
+
+// ── scope projection ─────────────────────────────────────────────────────────
+//
+// Scope isolation only means something if it is *visible*: which project this
+// view stands in, which namespaces the store holds, and which of those records
+// the agent could actually recall. Everything below is a pure projection of
+// `state` + the caller's `scopeContext` + (when the live service supplied them)
+// `source.scope` / `source.permissions`. Nothing here writes, and nothing here
+// guesses: an unknowable fact becomes `null`/`known: false`, never a plausible
+// default.
+
+/** @param {any} value @returns {string|null} */
+function asId(value) {
+  return typeof value === 'string' && value.trim() !== '' ? value : null
+}
+
+/** @param {any} value @returns {boolean} */
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * `project:<id>` / `session:<id>` shortened exactly the way `scopeLabel`
+ * shortens a record's scope, so a graph node and a namespace row name the same
+ * namespace the same way. Full ids stay in `model.scope`, where they are data
+ * rather than display.
+ * @param {string} namespace
+ * @returns {string}
+ */
+function shortNamespace(namespace) {
+  const value = String(namespace ?? '')
+  if (value === '' || value === GLOBAL_NAMESPACE) return value
+  const parsed = parseNamespace(value)
+  if (parsed.tier === 'session') return scopeLabel({ tier: 'session', session: parsed.key })
+  if (parsed.tier === 'project') return scopeLabel({ tier: 'project', projectId: parsed.key })
+  return value
+}
+
+/**
+ * One record's position relative to this caller.
+ * @param {any} record
+ * @param {{ projectId: string|null, sessionId: string|null }} context
+ * @returns {string}
+ */
+function relationOf(record, context) {
+  return scopeRelation(record, {
+    projectId: context?.projectId ?? null,
+    sessionId: context?.sessionId ?? null,
+  })
+}
+
+/**
+ * The tone a serializer should paint a relation with.
+ *
+ * `accent` = this is mine (current project / current session) or it is global
+ * and meant for everyone; `warn` = not mine to trust blindly (another project,
+ * an un-scoped legacy record, another session); `dim` = unknowable, because
+ * there is no caller context to compare against. That last case matters: with
+ * no context `scopeRelation` calls every project `other-project`, and painting
+ * the operator's own store yellow would assert something the model cannot know.
+ * @param {string} relation
+ * @param {boolean} known
+ * @returns {string}
+ */
+function scopeTone(relation, known) {
+  if (relation === 'global') return 'accent'
+  if (relation === 'unscoped') return 'warn'
+  if (known !== true) return 'dim'
+  if (relation === 'current-project' || relation === 'current-session') return 'accent'
+  return 'warn'
+}
+
+/** Project namespaces sort before global, global before sessions. */
+const NAMESPACE_TIER_RANK = Object.freeze({ project: 0, global: 1, session: 2 })
+
+/** @param {any} a @param {any} b @returns {number} */
+function compareNamespaces(a, b) {
+  if (a.current !== b.current) return a.current ? -1 : 1
+  const rank = (NAMESPACE_TIER_RANK[a.tier] ?? 3) - (NAMESPACE_TIER_RANK[b.tier] ?? 3)
+  if (rank !== 0) return rank
+  if (a.count !== b.count) return b.count - a.count
+  return a.namespace.localeCompare(b.namespace)
+}
+
+/**
+ * @param {any} entry
+ * @param {any} context
+ * @param {string|null} currentNamespace
+ * @returns {string}
+ */
+function namespaceTone(entry, context, currentNamespace) {
+  if (currentNamespace !== null && entry.namespace === currentNamespace) return 'accent'
+  if (entry.tier === 'global') return 'plain'
+  if (entry.tier === 'session') {
+    return context.sessionId !== null && entry.key === context.sessionId ? 'accent' : 'dim'
+  }
+  // Another project. With no caller context this is not a judgment the model can
+  // make, so it makes none (see `scopeTone`).
+  return context.known === true ? 'warn' : 'plain'
+}
+
+/**
+ * Normalize whatever the caller said about permissions. `mirror: true` is the
+ * file mirror's placeholder (`{ gear: 'none', presetActive: false, mirror: true }`):
+ * it exists so the row renders as "unknowable" instead of crashing — the file
+ * genuinely cannot report the gear of a live process.
+ * @param {any} source
+ * @returns {{ available: boolean, mirror: boolean, gear: string|null, gearLabel: string|null,
+ *   preset: string|null, presetActive: boolean, write: boolean }}
+ */
+function permissionView(source) {
+  const report = isPlainObject(source?.permissions) ? source.permissions : null
+  if (report === null) {
+    return { available: false, mirror: false, gear: null, gearLabel: null, preset: null, presetActive: false, write: false }
+  }
+  const gear = asId(report.gear) ?? 'none'
+  const preset = asId(report.preset)
+  return {
+    available: true,
+    mirror: report.mirror === true,
+    gear,
+    gearLabel: asId(report.gearLabel) ?? gear,
+    preset,
+    presetActive: report.presetActive === true && preset !== null,
+    write: report.writeToolsAvailable === true,
+  }
+}
+
+/**
+ * Where this projection stands, and what the store around it looks like.
+ *
+ * Precedence, deliberately: an explicit `opts.scopeContext` is the caller's own
+ * statement about where it is; a `source.scope` report (`service.scopeReport()`)
+ * is the next best thing and wins over re-deriving from `state.projects`; with
+ * neither, the model still describes the store but refuses to name a current
+ * project (`current.known === false`). Records are filtered by the same
+ * precedence — with no context at all they are not filtered, which is the
+ * operator's own whole-store view.
+ * @param {any} state
+ * @param {any} source
+ * @param {any} opts
+ * @returns {any}
+ */
+function buildScopeView(state, source, opts) {
+  const report = isPlainObject(source?.scope) ? source.scope : null
+  const asked = isPlainObject(opts?.scopeContext) ? opts.scopeContext : null
+  const reported = isPlainObject(report?.current) ? report.current : null
+
+  const askedProject = asked === null ? null : asId(asked.projectId)
+  const reportedProject = reported === null ? null : asId(reported.projectId)
+  const projectId = asked !== null ? askedProject : reportedProject
+  const sessionId = asked !== null
+    ? asId(asked.sessionId)
+    : (reported === null ? null : asId(reported.session))
+  const known = projectId !== null
+  const allProjects = asked !== null && asked.allProjects === true
+  const context = { projectId, sessionId, known, allProjects }
+
+  const effective = { ...opts }
+  if (asked === null && known) {
+    effective.scopeContext = { projectId, sessionId, allProjects }
+  }
+
+  /** @type {any} */
+  const current = { known: false, projectId: null, label: '', namespace: null, tier: null, basis: null, session: null }
+  if (reported !== null && reportedProject !== null) {
+    // The scope report is the service's own answer for *this* call, so it
+    // describes the caller better than anything re-derived from the store.
+    current.known = true
+    current.projectId = reportedProject
+    current.label = String(reported.projectLabel ?? projectLabel(state, reportedProject))
+    current.namespace = String(reported.namespace ?? scopeLabel({ tier: 'project', projectId: reportedProject }))
+    current.tier = asId(reported.tier)
+    current.basis = reported.basis === 'remote' ? 'remote' : reported.basis === 'path' ? 'path' : null
+    current.session = asId(reported.session) ?? sessionId
+  } else if (known) {
+    current.known = true
+    current.projectId = projectId
+    current.label = projectLabel(state, projectId)
+    current.namespace = scopeLabel({ tier: 'project', projectId })
+    current.session = sessionId
+  }
+  const currentNamespace = current.known === true ? String(current.namespace) : null
+
+  const counts = namespaceCounts(state)
+  /** @type {Map<string, number>} */
+  const totals = new Map()
+  for (const [namespace, count] of Object.entries(counts.byNamespace)) totals.set(namespace, Number(count) || 0)
+  const reportedNamespaces = isPlainObject(report?.namespaces) ? report.namespaces : null
+  if (reportedNamespaces !== null) {
+    for (const [namespace, info] of Object.entries(reportedNamespaces)) {
+      const value = Number(info?.count)
+      totals.set(namespace, Number.isFinite(value) && value >= 0 ? value : (totals.get(namespace) ?? 0))
+    }
+  }
+  /** @type {any[]} */
+  const namespaces = []
+  for (const [namespace, count] of totals) {
+    const parsed = parseNamespace(namespace)
+    const info = reportedNamespaces === null ? null : reportedNamespaces[namespace]
+    const label = parsed.tier === 'project' ? String(info?.label ?? projectLabel(state, parsed.key)) : ''
+    namespaces.push({ namespace, label, count, tier: parsed.tier, key: parsed.key, current: namespace === currentNamespace, tone: 'plain' })
+  }
+  for (const entry of namespaces) entry.tone = namespaceTone(entry, context, currentNamespace)
+  namespaces.sort(compareNamespaces)
+
+  const visible = visibleRecords(state, effective)
+  const otherProjects = new Set()
+  for (const entry of namespaces) {
+    if (entry.tier !== 'project') continue
+    if (known && entry.key === projectId) continue
+    otherProjects.add(entry.key)
+  }
+  const legacy = Object.values(state.memories ?? {}).filter((record) => isLegacyUnscoped(/** @type {any} */ (record))).length
+  const global = visible.filter((record) => relationOf(record, context) === 'global').length
+  const defaultTier = report === null ? null : asId(report.defaultScopeTier)
+
+  return {
+    context,
+    opts: effective,
+    report,
+    current,
+    namespaces,
+    counts: { visible: visible.length, legacy, global, otherProjects: otherProjects.size },
+    defaultTier,
+    permissions: permissionView(source),
+  }
+}
+
+/**
+ * The `model.scope` block: JSON-safe, no `undefined`, identifiers exact.
+ *
+ * The bases differ on purpose, because the questions differ:
+ *   - `count`         records visible under this context (what this render shows);
+ *   - `otherProjects` distinct projects that hold memories anywhere in the store
+ *                     and are not the current one — the hidden ones included,
+ *                     which is the point of the number (with no caller context it
+ *                     counts every project, since none of them can be called
+ *                     "current");
+ *   - `global`        visible records in the global namespace;
+ *   - `legacy`        records still un-tagged by the scope migration (store-wide;
+ *                     they are global, so they are visible either way).
+ * @param {any} view
+ * @returns {any}
+ */
+function modelScope(view) {
+  return {
+    current: { ...view.current },
+    count: view.counts.visible,
+    otherProjects: view.counts.otherProjects,
+    global: view.counts.global,
+    legacy: view.counts.legacy,
+  }
 }
 
 /**
@@ -304,6 +617,12 @@ function collectWarnings(source, opts, limits, t) {
   if (eventCount > limits.events && eventCount > 0) {
     warnings.push(t.warning.journalWindow(limits.events, eventCount))
   }
+  // Widening the view past what the caller can actually recall is a decision the
+  // reader has to see, not a silent default: everything below is one store, but
+  // only part of it is this agent's experience.
+  if (opts?.scopeContext !== undefined && opts.scopeContext !== null && opts.scopeContext.allProjects === true) {
+    warnings.push(t.warning.allProjects)
+  }
   return warnings
 }
 
@@ -325,6 +644,79 @@ function overviewSection(ctx) {
     rows.push({ label: t.label.pruned, value: t.value.pruned(journal.prunedThroughSeq), tone: 'warn' })
   }
   return { id: 'overview', title: t.section.overview, rows }
+}
+
+/**
+ * The scope section: where this view stands, which namespaces the store holds,
+ * where writes land, which gear is in force, and how much of the store is still
+ * un-tagged legacy. It answers the one question a memory dashboard has to answer
+ * honestly — *whose* memories am I looking at.
+ * @param {any} ctx
+ * @returns {any}
+ */
+function scopeSection(ctx) {
+  const { t, scopeView } = ctx
+  const current = scopeView.current
+  /** @type {any[]} */
+  const rows = []
+  if (current.known !== true) {
+    rows.push({ label: t.label.currentProject, value: t.value.scopeUnknown, tone: 'dim' })
+  } else {
+    const basis = current.basis === 'remote'
+      ? t.value.basisRepo
+      : current.basis === 'path' ? t.value.basisPath : t.value.basisUnknown
+    rows.push({
+      label: t.label.currentProject,
+      value: t.value.currentProject(current.label, shortNamespace(current.namespace ?? current.projectId), basis),
+      tone: 'accent',
+    })
+  }
+  for (const entry of scopeView.namespaces) {
+    rows.push({
+      // A namespace id is a machine identifier (like a journal event type), not
+      // interface copy: it is shown verbatim so it can be matched against the
+      // scope report and the journal segments.
+      label: shortNamespace(entry.namespace),
+      value: t.value.namespace(entry.label, entry.count),
+      tone: entry.tone,
+    })
+  }
+  rows.push({
+    label: t.label.defaultTier,
+    value: scopeView.defaultTier === null ? t.value.tierUnknown : t.value.defaultTier(scopeView.defaultTier),
+    tone: scopeView.defaultTier === null ? 'dim' : 'plain',
+  })
+  rows.push(gearRow(scopeView.permissions, t))
+  rows.push({
+    label: t.label.legacy,
+    value: scopeView.counts.legacy === 0 ? t.value.legacyNone : t.value.legacyCount(scopeView.counts.legacy),
+    tone: scopeView.counts.legacy > 0 ? 'warn' : 'dim',
+  })
+  return { id: 'scope', title: t.section.scope, rows }
+}
+
+/**
+ * The gear row. Three states, and the difference matters: a live report (gear +
+ * whether write tools are registered), the mirror's placeholder (unknowable —
+ * the file cannot see a live process's gear), and nothing at all (the standalone
+ * watcher). The last two render `dim` and say why instead of implying "none".
+ * @param {any} permissions
+ * @param {any} t
+ * @returns {any}
+ */
+function gearRow(permissions, t) {
+  if (permissions.available !== true) {
+    return { label: t.label.gear, value: t.value.gearUnavailable, tone: 'dim' }
+  }
+  if (permissions.mirror === true) {
+    return { label: t.label.gear, value: t.value.gearMirror(permissions.gear), tone: 'dim' }
+  }
+  return {
+    label: t.label.gear,
+    value: t.value.gear(permissions.gear, permissions.write),
+    tone: permissions.gear === 'none' ? 'warn' : 'ok',
+    note: permissions.presetActive ? t.value.presetActive(permissions.preset ?? 'anagenesis') : t.value.presetInactive,
+  }
 }
 
 /** @param {any} ctx @returns {any} */
@@ -443,13 +835,20 @@ function salienceSection(ctx) {
     .slice(0, ctx.limits.salience)
   const rows = ranked.map(({ record, salience }) => {
     const view = redactRecord(record, { level: ctx.redaction, includeBody: ctx.opts.includeBody === true, bodyChars: ctx.opts.bodyChars })
+    // Where a memory came from is part of how much it is worth to *this* caller,
+    // so the scope travels with the row. The row's `value` already carries
+    // `score kind/state` and the window parses it positionally, so the scope is
+    // only appended there when there is no note to carry it instead.
+    const scope = scopeLabel(record.scope)
+    const note = view.bodyPreview === '' ? '' : `${shorten(view.bodyPreview, 60)} · ${scope}`
+    const value = t.value.salience(salience.toFixed(2), t.kind(record.kind), t.state(record.state))
     return {
       label: shorten(view.label, 46),
-      value: t.value.salience(salience.toFixed(2), t.kind(record.kind), t.state(record.state)),
+      value: note === '' ? `${value} · ${scope}` : value,
       tone: record.state === 'locked' ? 'accent' : 'plain',
       // Empty string, never `undefined`: a model is JSON too, and the host
       // rejects an answer that does not survive a round trip (HANDOFF §10.18).
-      note: view.bodyPreview === '' ? '' : shorten(view.bodyPreview, 60),
+      note,
     }
   })
   if (rows.length === 0) rows.push({ label: t.label.noMemories, value: t.value.nothingToRank, tone: 'dim' })
@@ -491,14 +890,19 @@ function stateJournal(ctx) {
  * by salience (or an explicit id list), the edges are `links`. Links that point
  * outside the window are kept and marked `exists: false` — a dangling reference
  * is exactly the kind of thing this picture is for.
+ *
+ * Every node also carries where it came from: `scope` (short label), `relation`
+ * to this caller and a `tone` a serializer can paint it with, so a graph that
+ * mixes projects says so instead of looking like one homogeneous memory.
  * @param {any} state
  * @param {any} opts
  * @param {any} limits
  * @param {string} redaction
  * @param {any} t the language table from `./lang.js`
+ * @param {{ projectId: string|null, sessionId: string|null, known: boolean }} context
  * @returns {{ nodes: any[], edges: any[], warnings: string[] }}
  */
-function memoryGraph(state, opts, limits, redaction, t) {
+function memoryGraph(state, opts, limits, redaction, t, context) {
   const warnings = []
   const records = visibleRecords(state, opts)
   const wanted = Array.isArray(opts.ids) && opts.ids.length > 0 ? new Set(opts.ids.map(String)) : null
@@ -512,7 +916,17 @@ function memoryGraph(state, opts, limits, redaction, t) {
   const ids = new Set(chosen.map(({ record }) => String(record.id)))
   const nodes = chosen.map(({ record, salience }) => {
     const view = redactRecord(record, { level: redaction, includeBody: false })
-    return { id: String(record.id), label: shorten(view.label, 60), kind: view.kind, state: view.state, salience: Number(salience.toFixed(3)) }
+    const relation = relationOf(record, context)
+    return {
+      id: String(record.id),
+      label: shorten(view.label, 60),
+      kind: view.kind,
+      state: view.state,
+      salience: Number(salience.toFixed(3)),
+      scope: scopeLabel(record.scope),
+      relation,
+      tone: scopeTone(relation, context.known === true),
+    }
   })
   /** @type {any[]} */
   const edges = []
