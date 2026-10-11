@@ -7,6 +7,11 @@
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](package.json)
 
+[![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/3likofj/dsh-anagenesis)
+[![dsh.so risk](https://www.dsh.so/badge/dsh-anagenesis.svg)](https://www.dsh.so/artifact/dsh-anagenesis/)
+[![dsh.so install · dsh 0.2.0-rc.2](https://www.dsh.so/badge/install/dsh-anagenesis@0.2.0-rc.2.svg)](https://www.dsh.so/artifact/dsh-anagenesis/)
+[![dshfind](https://dshfind.com/api/badge/3likofj/dsh-anagenesis?lang=en)](https://dshfind.com/en/plugins/3likofj/dsh-anagenesis?ref=badge)
+
 > **Memory your agent actually owns — and you can actually see.**
 >
 > Not another "automatic memory black box". Memory operations are tools the agent calls on purpose,

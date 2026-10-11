@@ -7,6 +7,11 @@
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](package.json)
 
+[![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/3likofj/dsh-anagenesis)
+[![dsh.so risk](https://www.dsh.so/badge/dsh-anagenesis.svg)](https://www.dsh.so/artifact/dsh-anagenesis/)
+[![dsh.so install · dsh 0.2.0-rc.2](https://www.dsh.so/badge/install/dsh-anagenesis@0.2.0-rc.2.svg)](https://www.dsh.so/artifact/dsh-anagenesis/)
+[![dshfind](https://dshfind.com/api/badge/3likofj/dsh-anagenesis?lang=zh)](https://dshfind.com/zh/plugins/3likofj/dsh-anagenesis?ref=badge)
+
 > **给 Agent 一套它自己管得住、你也看得见的记忆。**
 >
 > 不是又一个"自动记忆黑箱"：记忆操作是 Agent 手里的工具，注入策略运行时可换，
