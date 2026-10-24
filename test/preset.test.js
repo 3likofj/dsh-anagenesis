@@ -77,7 +77,10 @@ test('preset: the directory form renders parseable YAML-ish rows and keeps the m
   assert.match(presetYaml, /^name: /m)
   assert.match(presetYaml, /^order: 7$/m)
   assert.match(compositionYaml, /^- id: anagenesis-core$/m)
-  assert.match(compositionYaml, /^  name: dsh-anagenesis$/m)
+  // 预设组合里的 core 行必须是**子路径**：裸名会在预设自己的 baseUrl 下再算一个
+  // client source，整个包的 dsh.client 半被拒（HANDOFF §25.3 约束 B）。
+  assert.match(compositionYaml, /^  name: dsh-anagenesis\/core$/m)
+  assert.equal(/^  name: dsh-anagenesis$/m.test(compositionYaml), false, 'the preset must never mount the bare package name')
 
   const lines = compositionYaml.split('\n')
   // One '- id:' per row, and each row is followed by its name line.
@@ -98,12 +101,14 @@ test('preset: the persona states the operating contract the tools rely on', () =
 })
 
 test('preset: it is AWARE of the visualization window and does not mount it', () => {
-  // The window is a separate single-row package because a `dsh.client` package may
-  // own exactly one active Loader row, and this preset already mounts five
-  // anagenesis rows in its own scope (HANDOFF §10.14). So "aware, not enabled" is
-  // enforced here rather than left to a comment nobody reads.
+  // The window row belongs to `dsh-anagenesis` itself, and a package name may be an
+  // active client source only once. This preset mounts `dsh-anagenesis/core` (a
+  // subpath) in its own scope, so mounting the window row here would add a second
+  // source for the same package name and the composition would fail to boot
+  // (HANDOFF §25.3). Aware-not-enabled is enforced here, not left to a comment.
   assert.equal(WINDOW_CAPABILITY.mountedByPreset, false)
-  assert.equal(WINDOW_CAPABILITY.packageName, 'dsh-anagenesis-window')
+  assert.equal(WINDOW_CAPABILITY.packageName, 'dsh-anagenesis/window')
+  assert.equal(WINDOW_CAPABILITY.requiresRow, 'dsh-anagenesis/window')
   assert.equal(WINDOW_CAPABILITY.tool, 'ana_window')
   // Three seats, not four: the operator asked for the better-sidebar bottom
   // workbench row to be removed, and the preset's declared awareness has to
@@ -113,19 +118,21 @@ test('preset: it is AWARE of the visualization window and does not mount it', ()
   assert.equal(WINDOW_CAPABILITY.entries.includes('better-sidebar-bottom'), false)
 
   const rows = anagenesisPreset().plugins
-  assert.equal(rows.some((row) => row.name === 'dsh-anagenesis-window'), false, 'the preset must never mount the window row')
-  assert.equal(anagenesisRows().some((row) => row.name === 'dsh-anagenesis-window'), false)
+  assert.equal(rows.some((row) => row.name === WINDOW_CAPABILITY.requiresRow), false, 'the preset must never mount the window row')
+  assert.equal(anagenesisRows().some((row) => row.name === WINDOW_CAPABILITY.requiresRow), false)
+  // The preset mounts the core row by SUBPATH: that is what keeps the bare name unique.
+  assert.ok(anagenesisRows().some((row) => row.name === 'dsh-anagenesis/core'), 'the preset mounts the core row by subpath')
 
   // Awareness is textual too: the capability is described as a CONDITIONAL, so an
   // agent without the row does not hallucinate a window (and does not stop looking
   // at its store).
-  assert.match(OPERATING_NOTES, /dsh-anagenesis-window/)
+  assert.match(OPERATING_NOTES, /dsh-anagenesis\/window/)
   assert.match(OPERATING_NOTES, /ana_window/)
   assert.match(OPERATING_NOTES, /不要假设它存在/)
   assert.match(OPERATING_NOTES, /ana_dashboard/)
 
   // The row is exported for a profile that does want it, and it is exactly one row.
-  assert.deepEqual(windowRow(), [{ id: 'anagenesis-window', name: 'dsh-anagenesis-window' }])
+  assert.deepEqual(windowRow(), [{ id: 'anagenesis-window', name: 'dsh-anagenesis/window' }])
 })
 
 test('preset: a generated composition is refreshed, a hand-written one is never touched', async () => {

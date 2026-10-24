@@ -23,7 +23,7 @@
  * dependency), the relative path is the in-repository form this checkout ships
  * (`window/` lives inside the `dsh-anagenesis` repository). Both are the same
  * code; the fallback exists so the package works before it is published.
- * @module dsh-anagenesis-window/host/viz
+ * @module dsh-anagenesis/host/viz
  */
 
 import { homedir } from 'node:os'
@@ -38,7 +38,7 @@ let viz = null
  */
 export async function loadVizLayer() {
   if (viz !== null) return viz
-  const parts = ['model', 'tui', 'diagram', 'redact', 'mirror']
+  const parts = ['model', 'tui', 'diagram', 'redact', 'mirror', 'facility']
   let bags = []
   let resolvedBy = 'package'
   try {
@@ -48,13 +48,15 @@ export async function loadVizLayer() {
     bags = []
     for (const part of parts) bags.push(await import(`../../../src/viz/${part}.js`))
   }
-  const [model, tui, diagram, redact, mirror] = bags
+  const [model, tui, diagram, redact, mirror, facility] = bags
   viz = {
     resolvedBy,
     DASHBOARD_SECTIONS: model.DASHBOARD_SECTIONS,
     DIAGRAM_KINDS: model.DIAGRAM_KINDS,
     buildDashboardModel: model.buildDashboardModel,
     buildDiagramModel: model.buildDiagramModel,
+    buildFacilityModel: facility.buildFacilityModel,
+    FACILITY_VERSION: facility.FACILITY_VERSION,
     renderFrame: tui.renderFrame,
     DIAGRAM_FORMATS: diagram.DIAGRAM_FORMATS,
     renderDiagram: diagram.renderDiagram,
@@ -415,6 +417,56 @@ export function createRenderer(options = {}) {
         stats.errors += 1
         stats.lastError = error instanceof Error ? error.message : String(error)
         options.logger?.warn?.(`anagenesis-window: dashboard model failed: ${stats.lastError}`)
+        throw error
+      }
+    },
+
+    /**
+     * 结构化**设施模型** —— 运维仪表盘（楼层平面图 / 分区详情 / 告警 / 实时电文）。
+     *
+     * 与 `dashboard()` 的区别是**粒度**而不是数据源：仪表盘回答"存储整体怎么样"，
+     * 设施视图回答"哪一层楼、哪个分区、哪一条记录现在在做什么"。两者读的是同一份
+     * 只读镜像，走同一套脱敏，谁都不写一个字节。
+     * @param {any} [request]
+     */
+    async facility(request = {}) {
+      // 与核心共用回退链：第一次调用先把存储根解析出来
+      await ensureRoot()
+      const layer = await loadVizLayer()
+      const cfg = limits(layer)
+      const redaction = layer.REDACTION_LEVELS.includes(String(request.redaction)) ? String(request.redaction) : cfg.redaction
+      const sensors = clamp(request.sensors, 1, 200, Math.max(cfg.salience * 4, 16))
+      const events = clamp(request.events, 1, 200, cfg.events)
+      const floors = clamp(request.floors, 1, 20, 6)
+      const key = `facility:${rootDir()}:${redaction}:${sensors}:${events}:${floors}:${cfg.includeBodies}`
+      try {
+        const value = await cached(key, async () => {
+          const root = rootDir()
+          if (!layer.looksLikeStore(root)) {
+            return {
+              ok: true, empty: true, storeFound: false, root,
+              model: layer.buildFacilityModel({ state: { schemaVersion: 0, version: 0, memories: {}, projects: {}, stacks: {} }, events: [], origin: 'mirror' }, {
+                now: now(), redaction, includeBody: cfg.includeBodies,
+                limit: { sensors, events, floors },
+              }),
+            }
+          }
+          const mirror = await layer.readStoreMirror(root)
+          const model = layer.buildFacilityModel(mirror, {
+            now: now(),
+            redaction,
+            includeBody: cfg.includeBodies,
+            limit: { sensors, events, floors },
+          })
+          return { ok: true, empty: false, storeFound: true, root, model }
+        })
+        if (value.empty !== true) stats.frames += 1
+        stats.lastAt = now()
+        return jsonSafe(value)
+      } catch (error) {
+        stats.errors += 1
+        stats.lastError = error instanceof Error ? error.message : String(error)
+        options.logger?.warn?.(`anagenesis-window: facility model failed: ${stats.lastError}`)
         throw error
       }
     },

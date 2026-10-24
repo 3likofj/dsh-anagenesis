@@ -7,7 +7,7 @@
  * (§不重复), that a declared dependency appearing or disappearing flips the seat
  * (§反应式余效应), and that teardown leaves no DOM node, no registration, no
  * listener, no timer and no service (§可逆 + §可观测).
- * @module dsh-anagenesis-window/test/entries
+ * @module dsh-anagenesis/test/entries
  */
 
 import test from 'node:test'
@@ -58,7 +58,7 @@ test('matrix: WITH DSH-better-sidebar, entries 1 and 4 arm and entry 3 steps asi
     // The decision is visible in the world, not only in the report.
     // One tab type only: the bottom-workbench row was removed on request, and
     // better-sidebar maps a descriptor into the same right column anyway.
-    assert.deepEqual(mounted.betterSidebar.tabsById(), ['dsh-anagenesis-window:panel'])
+    assert.deepEqual(mounted.betterSidebar.tabsById(), ['dsh-anagenesis:panel'])
     assert.deepEqual(mounted.sidebarRightTabs.ids(), [], 'nothing may be registered into the official column')
     assert.equal(mounted.slots.occupants('conversation.session.header.utilities').length, 1)
     assert.equal(mounted.slots.occupants('shell.overlay').length, 1)
@@ -78,12 +78,12 @@ test('matrix: WITHOUT DSH-better-sidebar, entries 3 and 4 arm and entry 1 degrad
     assert.equal(entryOf(mounted, 'official-right-sidebar').state, 'registered')
     assert.equal(entryOf(mounted, 'conversation-header').state, 'registered')
 
-    assert.deepEqual(mounted.sidebarRightTabs.ids(), ['dsh-anagenesis-window'])
+    assert.deepEqual(mounted.sidebarRightTabs.ids(), ['dsh-anagenesis'])
     const type = mounted.sidebarRightTabs.specs()[0]
-    assert.equal(type.kind, 'dsh-anagenesis-window:native', 'the official implementation id, distinct from the better-sidebar tab ids')
+    assert.equal(type.kind, 'dsh-anagenesis:native', 'the official implementation id, distinct from the better-sidebar tab ids')
     assert.equal(type.guide.length, 1, 'the guide row is the visible entrance')
-    assert.deepEqual(mounted.slots.occupants('sidebar.right.pane.tab').map((occupancy) => occupancy.spec.key), ['dsh-anagenesis-window'])
-    assert.deepEqual(mounted.slots.occupants('sidebar.right.pane.tab.title').map((occupancy) => occupancy.spec.key), ['dsh-anagenesis-window'])
+    assert.deepEqual(mounted.slots.occupants('sidebar.right.pane.tab').map((occupancy) => occupancy.spec.key), ['dsh-anagenesis'])
+    assert.deepEqual(mounted.slots.occupants('sidebar.right.pane.tab.title').map((occupancy) => occupancy.spec.key), ['dsh-anagenesis'])
   } finally {
     mounted.dispose()
   }
@@ -178,7 +178,7 @@ test('no duplicates: entry 1 has two possible seats and only ever occupies one',
 test('reactive: DSH-better-sidebar appearing arms entry 1 and rolls entry 3 back', () => {
   const mounted = mountClient({ betterSidebar: false })
   try {
-    assert.deepEqual(mounted.sidebarRightTabs.ids(), ['dsh-anagenesis-window'])
+    assert.deepEqual(mounted.sidebarRightTabs.ids(), ['dsh-anagenesis'])
 
     mounted.ledger.set('betterSidebar', createBetterSidebarFake())
     mounted.ledger.settle()
@@ -206,7 +206,7 @@ test('reactive: DSH-better-sidebar disappearing rolls entry 1 back and re-arms e
     assert.equal(mounted.slots.occupants('shell.overlay').length, 1, 'the window seat is untouched by an entry rollback')
     assert.equal(entryOf(mounted, 'better-sidebar-row').state, 'degraded', 'the report follows the environment back')
     assert.equal(entryOf(mounted, 'official-right-sidebar').state, 'registered')
-    assert.deepEqual(mounted.sidebarRightTabs.ids(), ['dsh-anagenesis-window'])
+    assert.deepEqual(mounted.sidebarRightTabs.ids(), ['dsh-anagenesis'])
   } finally {
     mounted.dispose()
   }
@@ -234,7 +234,7 @@ test('reactive: policy changes re-plan only the seats the policy governs', () =>
     const before = mounted.service.log('entry.armed').length
     mounted.service.configure({ officialEntry: 'always' })
     assert.equal(entryOf(mounted, 'official-right-sidebar').state, 'registered')
-    assert.deepEqual(mounted.sidebarRightTabs.ids(), ['dsh-anagenesis-window'])
+    assert.deepEqual(mounted.sidebarRightTabs.ids(), ['dsh-anagenesis'])
     assert.ok(mounted.service.log('entry.armed').length > before, 'the governed seat re-armed')
     mounted.service.configure({ officialEntry: 'off' })
     assert.equal(entryOf(mounted, 'official-right-sidebar').state, 'suppressed')
@@ -319,7 +319,7 @@ test('isolation: no slots service at all still publishes the service face and re
   const mounted = mountClient({ betterSidebar: false, slots: false, sidebarRightTabs: false, layout: false })
   try {
     const status = mounted.service.status()
-    assert.equal(status.package, 'dsh-anagenesis-window')
+    assert.equal(status.package, 'dsh-anagenesis')
     assert.equal(status.entries.length, 4)
     for (const row of status.entries) {
       assert.ok(['idle', 'degraded', 'suppressed'].includes(row.state), `${row.seat} must report, not throw`)

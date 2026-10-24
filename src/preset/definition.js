@@ -51,10 +51,11 @@ export const DEFAULT_GEAR = 'assisted'
  * The optional visualization-window capability, as a fact the preset publishes.
  *
  * `mountedByPreset: false` is the load-bearing field and it is not a default that
- * someone may flip: `dsh-anagenesis-window` declares `dsh.client`, and a package
- * with a client half may own exactly ONE active Loader row — while this preset
- * mounts five rows of `dsh-anagenesis` in its own scope. Adding a sixth row for the
- * window would make the whole composition fail to boot (HANDOFF §10.14).
+ * someone may flip: the client half belongs to `dsh-anagenesis` itself, and
+ * `@deepseek-ai/dsh-client-modules` allows **one active source per package name**.
+ * This preset mounts `dsh-anagenesis/core` (a subpath — not a client source) in
+ * its own scope; mounting the bare name here as well would be the second source
+ * and the whole composition would fail to boot (HANDOFF §25.3, §25.9).
  *
  * So the preset is *aware* and does not *enable*: the capability is described in
  * the persona text as a conditional (see `WINDOW_ENTRY_NOTES`) and the tool it
@@ -63,7 +64,8 @@ export const DEFAULT_GEAR = 'assisted'
  */
 export const WINDOW_CAPABILITY = Object.freeze({
   id: 'visualization-window',
-  packageName: 'dsh-anagenesis-window',
+  // 同一个包：窗口行用子路径 specifier，包名仍是 `dsh-anagenesis`。
+  packageName: 'dsh-anagenesis/window',
   tool: 'ana_window',
   // Three seats, not four: the operator asked for the better-sidebar bottom
   // workbench row to be removed. The remaining seats are the better-sidebar row
@@ -75,7 +77,7 @@ export const WINDOW_CAPABILITY = Object.freeze({
     'conversation-header',
   ]),
   mountedByPreset: false,
-  requiresRow: 'dsh-anagenesis-window',
+  requiresRow: 'dsh-anagenesis/window',
 })
 
 /**
@@ -150,7 +152,9 @@ export function anagenesisRows(opts = {}) {
     // Mounts the core row. Safe to mount here even when the profile bundle
     // already mounts it globally: MemoryStore.acquire() is reference counted per
     // rootDir, so both rows share one writer instead of racing on the journal.
-    { id: 'anagenesis-core', name: 'dsh-anagenesis' },
+    // 子路径，不是裸名：预设在自己的 baseUrl 下重新挂一次，裸名会成为同一个包的
+    // 第二个 active client source，整个包的 client 半被拒（HANDOFF §25.3 约束 B）。
+    { id: 'anagenesis-core', name: 'dsh-anagenesis/core' },
     { id: 'anagenesis-tools', name: 'dsh-anagenesis/tools' },
     {
       id: 'anagenesis-tools-gated',

@@ -81,6 +81,7 @@ const ANA_ICON = Object.freeze({
   zoomIn: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4L14 14M7 5.2v3.6M5.2 7h3.6"/></svg>',
   zoomOut: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4L14 14M5.2 7h3.6"/></svg>',
   fit: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>',
+  facility: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><rect x="2.4" y="2.4" width="11.2" height="11.2"/><path d="M2.4 8h11.2M8 2.4v11.2"/></svg>',
   dashboard: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 2.5h5v5h-5zM8.5 2.5h5v3h-5zM2.5 9.5h5v4h-5zM8.5 7.5h5v6h-5z"/></svg>',
   graph: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="3.4" cy="12" r="1.7"/><circle cx="8" cy="4" r="1.9"/><circle cx="12.8" cy="10.4" r="1.5"/><path d="M4.6 10.7 6.9 5.7M9.6 4.9l2.7 4.2"/></svg>',
 })
@@ -111,12 +112,15 @@ function toolNumber(field, label, value, min, max, hint) {
 }
 
 /**
- * 视图切换（仪表盘 / 图表）。
+ * 视图切换（设施 / 仪表盘 / 图表）。
  * @param {string} view
  * @returns {string}
  */
 function viewSwitch(view) {
   return '<div class="ana-zoom">'
+    + '<button type="button" class="ana-btn" data-ana-action="view-facility"'
+    + (view === 'facility' ? ' aria-pressed="true"' : '') + ' title="看设施：楼层（命名空间）/ 分区（记忆类型）/ 告警 / 实时电文">'
+    + ANA_ICON.facility + '设施</button>'
     + '<button type="button" class="ana-btn" data-ana-action="view-dashboard"'
     + (view === 'dashboard' ? ' aria-pressed="true"' : '') + ' title="看整体状态：规模、生命周期、策略、日志">'
     + ANA_ICON.dashboard + '仪表盘</button>'
@@ -127,12 +131,12 @@ function viewSwitch(view) {
 }
 
 /**
- * 工具栏。控件随视图变化：仪表盘有宽度，图表有图种/方向/缩放/节点上限。
+ * 工具栏。控件随视图变化：设施只留通用项，仪表盘有宽度，图表有图种/方向/缩放/节点上限。
  * @param {any} state
  * @returns {string}
  */
 function renderToolbarHtml(state) {
-  const view = state.view === 'graph' ? 'graph' : 'dashboard'
+  const view = state.view === 'graph' ? 'graph' : state.view === 'facility' ? 'facility' : 'dashboard'
   const parts = [viewSwitch(view), '<span class="ana-sep"></span>']
   if (view === 'graph') {
     parts.push(toolSelect('kind', '图种', state.kind, [
@@ -150,7 +154,8 @@ function renderToolbarHtml(state) {
       + toolButton('zoom-in', '', ANA_ICON.zoomIn, { iconOnly: true, hint: '放大图表' })
       + '</span>')
     parts.push(toolNumber('maxNodes', '节点', state.maxNodes, 4, 200, '最多画多少个记忆节点（按重要度取前 N 个）；超出的部分不画，但悬空引用会保留'))
-  } else {
+  } else if (view === 'dashboard') {
+    // 宽度只对终端文本帧有意义；设施视图没有这个旋钮（它的布局跟随窗口宽度）。
     parts.push(toolNumber('width', '宽度', state.width, 48, 200, '终端帧的宽度；只影响 ana_dashboard 的文本视图'))
   }
   parts.push(toolSelect('redaction', '脱敏', state.redaction, [

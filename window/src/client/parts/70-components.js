@@ -208,7 +208,7 @@ function AnagenesisWindow(props) {
   },
     injectChrome('ana-chrome', renderTitlebarHtml({ title: props.title, subtitle: snap.summary })),
     injectChrome('ana-chrome', renderToolbarHtml(toolbarState)),
-    createElement('div', { className: 'ana-pane' },
+    createElement('div', { className: snap.view === 'facility' ? 'ana-pane ana-pane--flush' : 'ana-pane' },
       snap.html === ''
         ? createElement('div', { className: 'ana-empty' },
             createElement('div', { className: 'ana-empty-title' }, snap.busy ? '正在读取存储…' : '还没有数据'),

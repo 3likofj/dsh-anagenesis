@@ -11,9 +11,9 @@
  */
 
 /** The package id — also the ModuleLoader id and the `dsh.client` identity. */
-const PKG_ID = 'dsh-anagenesis-window'
+const PKG_ID = 'dsh-anagenesis'
 /** The Host half's only route. Must equal `ROUTE_PATH` in src/host/rpc.js. */
-const API_PATH = '/anagenesis-window/api'
+const API_PATH = '/anagenesis/api'
 /** Attribute stamped on the one <style> element this package owns. */
 const CSS_ATTR = 'data-dsh-anagenesis-window'
 /** Current config shape. Bump with `migrateConfig` whenever a key changes meaning. */

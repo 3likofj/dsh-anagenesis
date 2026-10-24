@@ -48,8 +48,8 @@ function createHostTransport(log) {
   }
 }
 
-/** 视图可选值（与渲染层的下拉框一一对应）。 */
-const VIEWS = ['dashboard', 'graph']
+/** 视图可选值（与渲染层的下拉框一一对应）。设施是默认面：它是这个窗口的主屏。 */
+const VIEWS = ['facility', 'dashboard', 'graph']
 /** 图的两种排布方向。 */
 const DIRECTIONS = ['LR', 'TB']
 /** 脱敏级别（渲染层给的是中文标签，机器值仍是这三个）。 */
@@ -68,7 +68,9 @@ function createWindowEngine(deps) {
 
   const state = {
     open: false,
-    view: 'dashboard',
+    view: 'facility',
+    /** 设施视图里选中的分区 id（`floor/kind`）；纯本地重绘，不问 Host。 */
+    zone: '',
     kind: 'memory-graph',
     direction: 'LR',
     zoom: 1,
@@ -116,6 +118,7 @@ function createWindowEngine(deps) {
   const build = () => ({
     open: state.open,
     view: state.view,
+    zone: state.zone,
     kind: state.kind,
     direction: state.direction,
     zoom: state.zoom,
@@ -148,7 +151,10 @@ function createWindowEngine(deps) {
   const render = () => {
     if (lastModel === null) return
     try {
-      if (state.view === 'dashboard') {
+      if (state.view === 'facility') {
+        state.html = renderFacilityHtml(lastModel, { view: 'facility', zone: state.zone })
+        state.summary = facilitySummary(lastModel)
+      } else if (state.view === 'dashboard') {
         state.html = renderDashboardHtml(lastModel) + dashboardLegendHtml()
         state.summary = dashboardSummary(lastModel)
       } else {
@@ -187,11 +193,14 @@ function createWindowEngine(deps) {
     inFlight = (async () => {
       try {
         const isGraph = state.view === 'graph'
+        const isFacility = state.view === 'facility'
         let payload
         try {
           payload = isGraph
             ? await request('graph', { kind: state.kind, nodes: state.maxNodes, timeline: Math.max(6, deps.config.events * 2), redaction: state.redaction })
-            : await request('dashboard', { width: state.width, events: deps.config.events, salience: deps.config.salience, redaction: state.redaction })
+            : isFacility
+              ? await request('facility', { events: deps.config.events, salience: deps.config.salience, redaction: state.redaction })
+              : await request('dashboard', { width: state.width, events: deps.config.events, salience: deps.config.salience, redaction: state.redaction })
           if (payload.ok !== true) throw new Error(String(payload.error === undefined ? 'Host 拒绝了这次读取' : payload.error))
         } catch (modelError) {
           // 版本偏斜：Host 半还是只提供文本帧的旧版本（Node 侧不会热替换，
@@ -205,7 +214,9 @@ function createWindowEngine(deps) {
           state.degraded = isGraph ? 'diagram' : 'frame'
           state.html = renderTextFallbackHtml(String(legacy.text ?? ''), isGraph
             ? '当前 Host 半还是旧版本，只能给出图表源码文本。重启桌面端后，这里会变成真正的图形（内联 SVG）。'
-            : '当前 Host 半还是旧版本，只能给出终端文本帧。重启桌面端后，这里会变成中文卡片与彩色分布条。')
+            : isFacility
+              ? '当前 Host 半还是旧版本，还没有设施模型。重启桌面端后，这里会变成楼层平面图与分区详情。'
+              : '当前 Host 半还是旧版本，只能给出终端文本帧。重启桌面端后，这里会变成中文卡片与彩色分布条。')
           state.summary = ''
           state.origin = String(legacy.origin ?? 'mirror')
           state.storeVersion = numberOr(legacy.storeVersion, 0)
@@ -219,7 +230,8 @@ function createWindowEngine(deps) {
         state.degraded = ''
         state.warnings = Array.isArray(payload.model?.warnings) ? payload.model.warnings.slice() : []
         state.origin = typeof payload.model?.origin === 'string' ? payload.model.origin : ''
-        state.storeVersion = numberOr(payload.model?.store?.version, 0)
+        // 设施模型把版本号放在 `building.storeVersion`（它描述的是"楼"），别处放在 `store.version`。
+        state.storeVersion = numberOr(payload.model?.store?.version ?? payload.model?.building?.storeVersion, 0)
         render()
         state.lastAt = now()
         state.refreshes += 1
@@ -407,11 +419,29 @@ function createWindowEngine(deps) {
   }
 
   /**
+   * 选中一个分区（`floor/kind`）。**纯本地重绘**：模型没变，变的只是"看哪一格"，
+   * 所以这里不发一次网络请求。
+   * @param {string} zoneId
+   */
+  function selectZone(zoneId) {
+    const next = typeof zoneId === 'string' ? zoneId : ''
+    if (next === state.zone) return snap()
+    state.zone = next
+    log.push('window.zone', { zone: next })
+    render()
+    notify()
+    return snap()
+  }
+
+  /**
    * 工具栏按钮的分发点（窗口根节点上一个事件委托最终走这里）。
    * @param {string} action
    */
   function dispatch(action) {
-    switch (String(action)) {
+    const name = String(action)
+    if (name.indexOf('zone:') === 0) return selectZone(name.slice('zone:'.length))
+    switch (name) {
+      case 'view-facility': return setView('facility')
       case 'view-dashboard': return setView('dashboard')
       case 'view-graph': return setView('graph')
       case 'zoom-in': return setField('zoom', Number((state.zoom * 1.2).toFixed(3)))

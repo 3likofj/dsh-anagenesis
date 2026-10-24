@@ -3,7 +3,6 @@
 [English](README.en.md) · [更新日志](CHANGELOG.md) · Apache-2.0
 
 [![npm](https://img.shields.io/npm/v/dsh-anagenesis?label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis)
-[![npm（窗口包）](https://img.shields.io/npm/v/dsh-anagenesis-window?label=window&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis-window)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](package.json)
 
@@ -17,7 +16,26 @@
 > 不是又一个"自动记忆黑箱"：记忆操作是 Agent 手里的工具，注入策略运行时可换，
 > 每次变更都带逆操作，自我调参有边界、有审计、能回滚 —— 而整个存储自包含、离线、零依赖。
 
-![anagenesis 桌面窗口 —— 仪表盘](assets/dashboard.png)
+![anagenesis 桌面窗口 —— 设施平面图（默认面）](assets/facility.png)
+
+## 0.3.0 新增：一个包，一块设施仪表盘
+
+这一版做两件事：**两个插件合成一个**（窗口不再是需要单独安装的兄弟包），以及**把仪表盘换成设施视图**
+—— 记忆库被画成一栋可以运维的楼。
+
+| 新增 | 一句话 | 你能看到什么 |
+|---|---|---|
+| **一个包** | `dsh-anagenesis-window` 并入 `dsh-anagenesis`：一个包、六个 Loader 行（仍可逐行 `disabled: true`）、一份 `dsh.client` | 安装只有**一条命令**；行 id 与工具不变 |
+| **设施视图（默认面）** | 楼层 = 命名空间（当前项目 / 全局 / 每个会话），分区 = 记忆类型，传感器 = 一条活跃记忆 | 左侧图标栏 / 中央平面图 / 右侧分区详情 / 上下状态条 |
+| **真实读数** | 显著度 / 置信度 / 新鲜度，以及「本分区单条能量 vs **全楼实测均值**」 | 模型里没有的数字不会出现在屏幕上 |
+| **告警台** | 矛盾链接、即将过期、高显著但陈旧、悬空链接、锁定、安全模式、脱敏关闭、只读档位 | 每一条都带数量与"为什么值得看" |
+| **实时电文** | 日志尾部真实事件流，底部滚动 | 你改了什么、刚才发生了什么，一眼可见 |
+| **适配宿主 0.2.1-rc.2** | 三处 `peerDependencies` 抬到 `^0.2.1-rc.2`，并用真 Cordis 复跑 98 项启动契约 | 装得上、启动得了 |
+
+**升级须知（破坏性）**：旧的 `dsh-anagenesis-window` 包**停止更新**了。
+如果你装过它，请卸载（`dsh plugin remove dsh-anagenesis-window`，或从 profile 的 `bundles` 里删掉那一行），
+只保留 `dsh-anagenesis` —— 窗口现在是这个包的第六行。窗口路由改为 `/anagenesis/api`，
+存储格式**没有变**（仍是 v7），不需要迁移。
 
 ## 0.2.0 新增：记忆按项目隔离，预设成为权限开关
 
@@ -50,8 +68,8 @@
   才仍然全局唯一 —— 隔离做在**文件**上，可逆性做在**计数器**上。
 - **物理隔离与旧数据兼容同时成立**：每个命名空间有自己的日志段与归档段，而全局命名空间保留原有的无前缀
   命名，升级前写下的存储一个字节都不用改。
-- **契约可被证伪**：95 条主测试 + 87 条窗口测试 + 一个真 Cordis / 真 `defineTool` / 真预设注册表的开机沙箱
-  96 项检查，跑的都是真实行代码，不是 mock 的复制品。
+- **契约可被证伪**：108 条主测试 + 89 条窗口测试 + 一个真 Cordis / 真 `defineTool` / 真预设注册表的开机沙箱
+  98 项检查 + 一次真打包真安装的打包闸门，跑的都是真实行代码，不是 mock 的复制品。
 
 ## 三句话说明它是什么
 
@@ -117,31 +135,33 @@
 | 自我调节 | 无 | **元层依据反馈自调参**：参数包络约束 + UCB1 选臂 + 审计 + 评估 + 回滚 |
 | 失控风险 | — | **单调护栏 + 熔断 + `safeMode`**；能自改的只有 tier-1，外环冻结 |
 | 依赖 | 常常需要外部服务或向量库 | **零运行时依赖、离线、无子进程、无网络** |
-| 可见性 | 一个黑箱 | TUI 仪表盘（含作用域分区）+ mermaid/d2/ascii 文本图表 + 可选桌面窗口 |
+| 可见性 | 一个黑箱 | 设施视图（楼层平面 / 分区详情 / 告警 / 电文）+ TUI 仪表盘 + mermaid/d2/ascii 文本图表 |
 
 ## 安装
 
-### 全家桶（推荐：内核 + 桌面窗口一次装齐）
+### 一条命令
 
-两个包都已发布在 npm：[`dsh-anagenesis`](https://www.npmjs.com/package/dsh-anagenesis) · [`dsh-anagenesis-window`](https://www.npmjs.com/package/dsh-anagenesis-window) —— `dsh plugin add` 直接取 npm 上的最新版。
+一个包、六个 Loader 行（内核 / 只读工具 / 护栏 / 预设 / 可视化 / 桌面窗口），
+`dsh plugin add` 直接取 npm 上的最新版：[`dsh-anagenesis`](https://www.npmjs.com/package/dsh-anagenesis)。
 
 ```bash
-dsh plugin add dsh-anagenesis          # 内核：记忆 + 策略 + 护栏 + 可视化工具
-dsh plugin add dsh-anagenesis-window   # 桌面窗口（可选，但推荐一起装）
+dsh plugin add dsh-anagenesis
 ```
 
 装完**重启 profile**。安装会自动注册名为 **`anagenesis`** 的 Agent 预设 —— 新会话里选中它即可。
 
-> 只想要内核？第一条命令就够了。窗口**不装也完全可用**：预设知道这个能力存在，但从不假设它被安装。
+> **从 0.2.x 升级**：先卸掉旧的窗口包（它已停止更新），只保留这一个包：
+> `dsh plugin remove dsh-anagenesis-window`（或从 profile 的 `bundles` 里删掉那一行），然后重启。
 
 ### 从源码安装（想改代码、或跟进 `main`）
 
 ```bash
 git clone https://github.com/3likofj/dsh-anagenesis.git
 cd dsh-anagenesis
-dsh plugin --profile desktop add link:<仓库绝对路径>             # 主包
-dsh plugin --profile desktop add link:<仓库绝对路径>/window      # 可选：桌面窗口
+dsh plugin --profile desktop add link:<仓库绝对路径>
 ```
+
+`window/` 只是这个包的一个目录（客户端半 + 渲染层 + 窗口 Host 半），不再是第二个包。
 
 ## 五分钟上手
 
@@ -149,9 +169,9 @@ dsh plugin --profile desktop add link:<仓库绝对路径>/window      # 可选�
 2. 正常干活就行：Agent 会自己调 `ana_recall` 与 `ana_remember` —— 你不需要写查询语言。
 3. 想看一眼记忆库：让 Agent 调 `ana_dashboard`（一帧 TUI 仪表盘，直接出现在回答里）或 `ana_diagram`（可粘贴进 Markdown 的图）。
 4. 想在真实终端里持续刷新：`node tools/viz-watch.mjs --watch`（只读、独立进程）。
-5. 想要桌面窗口：装上第二个包并重启，然后让 Agent 调 `ana_window`，或直接点界面上的入口。
+5. 想要桌面窗口：重启后让 Agent 调 `ana_window`（默认打开设施视图），或直接点界面上的入口。
 
-## 能力地图（19 个工具，按权限分层）
+## 能力地图（20 个工具，按权限分层）
 
 **只读层（装上插件就有）**
 
@@ -202,15 +222,29 @@ dsh plugin --profile desktop add link:<仓库绝对路径>/window      # 可选�
 
 ## 看得见
 
+![设施视图 —— 楼层平面 / 分区详情 / 告警 / 电文](assets/facility.png)
+
 ![记忆关系图（横向）](assets/graph-lr.png)
 
 ![生命周期流转](assets/lifecycle.png)
 
 ![策略时间线](assets/timeline.png)
 
+<details>
+<summary>仪表盘面（另一张脸：`ana_dashboard` 的图形化版本）</summary>
+
+![仪表盘](assets/dashboard.png)
+
+</details>
+
 - **TUI 仪表盘**（`ana_dashboard`）：总览、生命周期分布、类型分布、策略栈与健康度、偏离默认值的调参旋钮、日志尾部、重要度排行、渲染器自身状态。按显示宽度精确对齐（中日韩标签不会把边框撕开），颜色只有被要求时才上。
 - **文本图表**（`ana_diagram`）：Mermaid（默认）/ D2 / ASCII 三种格式；三种图 —— 记忆关系图（含 `supports` / `contradicts` / `supersedes` 等关系）、策略时间线、生命周期流转（只画日志**真实记录**到的迁移，`lock` / `expire` 这类"只记录目的态"的操作会如实说明，而不是编造一条来源边）。
-- **桌面窗口**（可选兄弟包）：同一批纯函数产出的中文卡片 + 自研内联 SVG 有向图（横向 / 纵向 + 缩放），三个入口席位（better-sidebar 侧栏行 / 官方右侧边栏 / 对话顶部栏），只读镜像存储。
+- **设施视图**（桌面窗口的默认面，`method=facility`）：楼层 = 命名空间、分区 = 记忆类型、传感器 = 一条活跃记忆；
+  读数只有真的东西（显著度 / 置信度 / 新鲜度 / 单条能量 vs 全楼实测基线），告警台列出矛盾链接、即将过期、
+  高显著但陈旧、悬空链接、锁定、安全模式、脱敏关闭、只读档位，底部电文条是日志尾部真实事件流。
+  模型里没有的数字不会出现在屏幕上。
+- **桌面窗口**（同一个包的第六行）：仪表盘 / 设施 / 图表三张脸，共享同一批纯函数产出的中文卡片与自研内联 SVG
+  有向图（横向 / 纵向 + 缩放），三个入口席位（better-sidebar 侧栏行 / 官方右侧边栏 / 对话顶部栏），只读镜像存储。
 - 渲染是**只读投影**：一次渲染不是一次事务。唯一可选的写入 `auditRenders` 默认关闭；另一个只读进程 `tools/viz-watch.mjs` 可以在真实终端里持续刷新。
 
 ## 数据在哪、隐私如何

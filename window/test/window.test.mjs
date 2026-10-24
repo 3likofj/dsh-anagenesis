@@ -6,7 +6,7 @@
  * are behavioural claims — "the window is empty while closed", "the header button
  * toggles", "picking a tab raises the window without drawing a second one" — and
  * not merely "a function with this name exists".
- * @module dsh-anagenesis-window/test/window
+ * @module dsh-anagenesis/test/window
  */
 
 import test from 'node:test'
@@ -76,6 +76,55 @@ function graphModel(options = {}) {
   }
 }
 
+/**
+ * 一个形状正确的设施模型（与 `src/viz/facility.js` 的产出同构）。
+ *
+ * `subject` 是分区里的那条记录的标题 —— 它必须一路走到"右侧分区详情的传感器列表"，
+ * 所以断言它出现在注入的 HTML 里，就同时证明了"楼层画出来了"和"传感器画出来了"。
+ * @param {{ subject?: string }} [options]
+ */
+function facilityModel(options = {}) {
+  const subject = options.subject === undefined ? '记忆 A' : options.subject
+  const zone = {
+    id: 'project:p1_abc/fact', floor: 'project:p1_abc', kind: 'fact',
+    count: 2, live: 2, states: { active: 1, draft: 1 }, topState: 'active',
+    share: 0.5, salience: 0.8, confidence: 0.9, freshnessHours: 2,
+    energy: 1.4, energyRatio: 1.2, sensorIds: ['mem-a', 'mem-b'],
+  }
+  return {
+    kind: 'facility',
+    version: 1,
+    generatedAt: 1_700_000_000_000,
+    origin: 'mirror',
+    redaction: { level: 'secrets', note: '' },
+    building: {
+      storeVersion: 12, schemaVersion: 7, safeMode: false, records: 2, live: 2,
+      namespaces: 1, projects: 1, floors: 1, floorsShown: 1, stacks: [], gear: 'none', mirror: true,
+    },
+    metrics: {
+      records: 2, live: 2, states: { active: 1, draft: 1 }, kinds: { fact: 2 },
+      salience: 0.8, confidence: 0.9, links: 0, orphanLinks: 0, expiringSoon: 0,
+      staleHot: 0, conflicts: 0, locked: 0, retired: 0, events: 3,
+    },
+    baseline: { energyPerRecord: 1.17, liveRecords: 2 },
+    floors: [{
+      id: 'project:p1_abc', label: 'anagenesis', detail: 'p1_abc', tier: 'project',
+      count: 2, live: 2, states: { active: 1, draft: 1 }, share: 1, zones: [zone], lastAt: 1_700_000_000_000,
+    }],
+    sensors: [
+      {
+        id: 'mem-a', label: subject, gist: '摘要', bodyPreview: '', kind: 'fact', state: 'active',
+        tier: 'project', namespace: 'project:p1_abc', salience: 0.9, confidence: 0.95,
+        accessCount: 1, ageHours: 1, expiresInHours: null, links: 0, tags: [], redacted: false,
+      },
+    ],
+    anomalies: [{ code: 'locked', level: 'info', title: '1 pinned record(s)', detail: '钉住的记录不会衰减', ref: 'mem-a', ageHours: 0 }],
+    anomaliesTotal: 1,
+    ticker: [{ seq: 7, type: 'memory.promote', ageMs: 60_000 }],
+    limit: { sensors: 24, events: 8, anomalies: 8, floors: 6 },
+  }
+}
+
 /** A stand-in for the Host half's route. */
 function createFakeHost(options = {}) {
   const calls = []
@@ -88,7 +137,7 @@ function createFakeHost(options = {}) {
     calls.push({ method: method, params: params })
     if (state.fail) throw new Error('network down')
     const table = {
-      ping: { ok: true, package: 'dsh-anagenesis-window' },
+      ping: { ok: true, package: 'dsh-anagenesis' },
       config: {
         ok: true, title: 'anagenesis · 可视化', redaction: 'secrets', color: 'never', width: 96, events: 8,
         salience: 5, diagramNodes: 40, includeBodies: false, refreshMs: 2000,
@@ -98,6 +147,7 @@ function createFakeHost(options = {}) {
       // 结构化模型，不是文本帧：窗口自己渲染。这里刻意用一个**最小但形状正确**的
       // 模型，这样"窗口真的渲染出了东西"是这条断言在管的事，而不是"Host 回了文本"。
       dashboard: { ok: true, empty: false, storeFound: true, root: '/tmp/store', model: dashboardModel(options) },
+      facility: { ok: true, empty: false, storeFound: true, root: '/tmp/store', model: facilityModel(options) },
       graph: { ok: true, empty: false, storeFound: true, root: '/tmp/store', model: graphModel(options) },
       takeOpen: { ok: true, request: state.pending },
       // 旧版 Host 半只认识这两个文本方法。
@@ -105,7 +155,7 @@ function createFakeHost(options = {}) {
       diagram: { ok: true, text: 'LEGACY-DIAGRAM-TEXT', kind: 'memory-graph', format: 'mermaid', storeVersion: 12, origin: 'mirror', redaction: 'secrets', warnings: [] },
     }
     const payload = table[method]
-    if (payload === undefined || (state.legacyHost && (method === 'dashboard' || method === 'graph'))) {
+    if (payload === undefined || (state.legacyHost && (method === 'facility' || method === 'dashboard' || method === 'graph'))) {
       return { ok: false, status: 400, json: async () => ({ ok: false, error: 'unknown method ' + String(method) }) }
     }
     return { ok: true, status: 200, json: async () => payload }
@@ -163,8 +213,8 @@ test('window: the overlay is registered once and renders nothing while closed', 
   }
 })
 
-test('window: opening renders one dialog containing the rendered dashboard, and closing removes it', async () => {
-  const host = createFakeHost({ subject: 'OVERVIEW-BLOCK' })
+test('window: the default face is the facility floorplan, and it renders the model', async () => {
+  const host = createFakeHost({ subject: 'SENSOR-A' })
   const mounted = mountClient({ betterSidebar: true, fetchImpl: host.fetchImpl })
   try {
     const mount = mounted.react.mount(componentFor(mounted, 'shell.overlay'), {})
@@ -174,15 +224,46 @@ test('window: opening renders one dialog containing the rendered dashboard, and 
     const dialog = findElement(mount.tree, (node) => node.props.role === 'dialog')
     assert.ok(dialog !== null, 'an open window is a dialog')
     const html = injectedHtml(mount.tree)
+    assert.equal(mounted.service.status().window.view, 'facility', 'the facility screen is the default face now')
+    assert.ok(html.includes('gx-shell'), 'and it is the facility markup, not the dashboard')
+    assert.ok(html.includes('楼层平面'), 'in Chinese')
+    assert.ok(html.includes('SENSOR-A'), 'the model reached the renderer: the record label is in the zone detail')
+    assert.equal(findElement(mount.tree, (node) => node.type === 'pre'), null, 'no monospace frame anywhere')
+    assert.ok(host.methods().includes('facility'), 'the window asks its own Host route for the facility model')
+    assert.ok(!host.methods().includes('dashboard'), 'and it does not fetch the dashboard as well')
+
+    // 选分区是**本地重绘**：模型没变，不该再问 Host 一次。
+    const requests = host.calls.length
+    mounted.service.dispatch('zone:project:p1_abc/fact')
+    mount.rerender()
+    assert.equal(host.calls.length, requests, 'choosing a zone is local: no extra round trip')
+    assert.ok(injectedHtml(mount.tree).includes('gx-zone--on'), 'the chosen zone is marked on the plan')
+
+    mounted.service.close('test')
+    mount.rerender()
+    assert.equal(mount.tree, null, 'closing removes it from the tree')
+    mount.unmount()
+  } finally {
+    mounted.dispose()
+  }
+})
+
+test('window: switching to the dashboard face fetches that model and renders cards', async () => {
+  const host = createFakeHost({ subject: 'OVERVIEW-BLOCK' })
+  const mounted = mountClient({ betterSidebar: true, fetchImpl: host.fetchImpl })
+  try {
+    const mount = mounted.react.mount(componentFor(mounted, 'shell.overlay'), {})
+    mounted.service.open({ seat: 'better-sidebar-row' })
+    await settle()
+    mounted.service.setView('dashboard')
+    await settle()
+    mount.rerender()
+    const html = injectedHtml(mount.tree)
     assert.ok(html.includes('OVERVIEW-BLOCK'), 'the model reached the renderer: the subject is on screen')
     assert.ok(html.includes('ana-card'), 'and it was rendered as cards, not as a text frame')
     assert.ok(html.includes('记忆总数'), 'in Chinese')
     assert.equal(findElement(mount.tree, (node) => node.type === 'pre'), null, 'no monospace frame anywhere')
     assert.ok(host.methods().includes('dashboard'), 'the window asks its own Host route for the structured model')
-
-    mounted.service.close('test')
-    mount.rerender()
-    assert.equal(mount.tree, null, 'closing removes it from the tree')
     mount.unmount()
   } finally {
     mounted.dispose()
@@ -220,10 +301,18 @@ test('window: the toolbar only shows controls the current face can use', async (
     mounted.service.open({ seat: 'x' })
     await settle()
     mount.rerender()
+    const facility = injectedHtml(mount.tree)
+    assert.ok(facility.includes('data-ana-action="view-facility"'), 'every face offers the facility switch')
+    assert.ok(!facility.includes('data-ana-field="width"'), 'width is a text-frame knob: the facility face has none')
+    assert.ok(!facility.includes('data-ana-field="kind"'), 'nor a diagram kind')
+    assert.ok(facility.includes('data-ana-action="refresh"') && facility.includes('data-ana-action="close"'))
+
+    mounted.service.setView('dashboard')
+    await settle()
+    mount.rerender()
     const dash = injectedHtml(mount.tree)
     assert.ok(dash.includes('data-ana-field="width"'), 'the dashboard needs a frame width')
     assert.ok(!dash.includes('data-ana-field="kind"'), 'it does not need a diagram kind')
-    assert.ok(dash.includes('data-ana-action="refresh"') && dash.includes('data-ana-action="close"'))
 
     mounted.service.setView('graph')
     await settle()
@@ -268,7 +357,7 @@ test('window: opening a sidebar row raises the window without drawing a second U
   const host = createFakeHost({})
   const mounted = mountClient({ betterSidebar: true, fetchImpl: host.fetchImpl })
   try {
-    const descriptor = mounted.betterSidebar.getTab('dsh-anagenesis-window:panel')
+    const descriptor = mounted.betterSidebar.getTab('dsh-anagenesis:panel')
     assert.ok(descriptor !== undefined)
     const mount = mounted.react.mount(descriptor.component, {})
     await settle()
@@ -286,7 +375,7 @@ test('window: the content lives only in the window, never in the seat', async ()
   const host = createFakeHost({})
   const mounted = mountClient({ betterSidebar: true, fetchImpl: host.fetchImpl })
   try {
-    const descriptor = mounted.betterSidebar.getTab('dsh-anagenesis-window:panel')
+    const descriptor = mounted.betterSidebar.getTab('dsh-anagenesis:panel')
     assert.ok(descriptor !== undefined, 'entry 1 is the only better-sidebar tab type')
     const mount = mounted.react.mount(descriptor.component, {})
     await settle()
@@ -305,8 +394,8 @@ test('window: the sidebar has exactly one anagenesis row (the bottom workbench w
   const host = createFakeHost({})
   const mounted = mountClient({ betterSidebar: true, fetchImpl: host.fetchImpl })
   try {
-    assert.deepEqual(mounted.betterSidebar.tabsById(), ['dsh-anagenesis-window:panel'])
-    assert.equal(mounted.betterSidebar.getTab('dsh-anagenesis-window:bottom'), undefined, 'entry 2 is gone on request')
+    assert.deepEqual(mounted.betterSidebar.tabsById(), ['dsh-anagenesis:panel'])
+    assert.equal(mounted.betterSidebar.getTab('dsh-anagenesis:bottom'), undefined, 'entry 2 is gone on request')
     // …and the seat is not merely unreachable: the service has no bottom-bench branch either.
     mounted.service.open({ seat: 'better-sidebar-bottom' })
     assert.deepEqual(mounted.betterSidebar.openedSeeds(), [], 'no provider-side tab is opened for a seat that no longer exists')
@@ -396,7 +485,7 @@ test('window: a Host half that only knows the text methods degrades instead of e
     assert.ok(html.includes('LEGACY-FRAME-TEXT'), 'the legacy text is still shown')
     assert.ok(html.includes('重启桌面端'), 'and the user is told what to do about it')
     assert.ok(html.includes('降级为文本视图'), 'the footer says so too')
-    assert.ok(host.methods().includes('dashboard') && host.methods().includes('frame'), 'it tried the new method first, then fell back')
+    assert.ok(host.methods().includes('facility') && host.methods().includes('frame'), 'it tried the new method first, then fell back')
 
     // 图形面同理。
     mounted.service.setView('graph')
@@ -448,12 +537,12 @@ test('window: the redaction policy rides every request, so the Host never sends 
   try {
     mounted.service.open({ seat: 'x' })
     await settle()
-    const modelCall = host.calls.find((call) => call.method === 'dashboard')
+    const modelCall = host.calls.find((call) => call.method === 'facility')
     assert.ok(modelCall !== undefined)
     assert.equal(modelCall.params.redaction, 'secrets', 'the default policy is the tools\u2019 policy')
     mounted.service.patch({ redaction: 'strict' })
     await settle()
-    const strict = host.calls.filter((call) => call.method === 'dashboard').pop()
+    const strict = host.calls.filter((call) => call.method === 'facility').pop()
     assert.equal(strict.params.redaction, 'strict')
   } finally {
     mounted.dispose()

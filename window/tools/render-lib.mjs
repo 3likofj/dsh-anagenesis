@@ -6,7 +6,7 @@
  * `client.js` —— 浏览器的 `dsh.client` 包是经典脚本，不能有顶层 import/export。所以
  * 部件按"共享一个作用域的文本"写，浏览器侧靠拼接，Node 侧靠 `new Function`。一份源码，
  * 两个宿主，不存在"预览和窗口渲染得不一样"的可能。
- * @module dsh-anagenesis-window/tools/render-lib
+ * @module dsh-anagenesis/tools/render-lib
  */
 
 import { readFileSync, readdirSync } from 'node:fs'
@@ -28,6 +28,9 @@ const PUBLIC = [
   'metricCard',
   'renderDashboardHtml',
   'dashboardLegendHtml',
+  'renderFacilityHtml',
+  'facilitySummary',
+  'gxResolveSelection',
   'renderDiagramHtml',
   'diagramSummary',
   'graphLegendHtml',

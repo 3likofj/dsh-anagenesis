@@ -11,7 +11,7 @@
  *
  * 渲染层是无 import/export 的纯函数部件（浏览器侧靠拼接），所以用
  * `tools/render-lib.mjs` 装进来 —— 与窗口、与离线预览用的是同一份源码。
- * @module dsh-anagenesis-window/test/scope
+ * @module dsh-anagenesis/test/scope
  */
 
 import test from 'node:test'

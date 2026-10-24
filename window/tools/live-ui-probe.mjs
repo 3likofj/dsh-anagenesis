@@ -5,7 +5,7 @@
  * 也没有真实的 React 事件系统。用户报"点不动"时，只有真页面能给出答案。
  *
  * 用法：node tools/live-ui-probe.mjs [--url http://127.0.0.1:19387] [--shot <dir>]
- * @module dsh-anagenesis-window/tools/live-ui-probe
+ * @module dsh-anagenesis/tools/live-ui-probe
  */
 
 import { existsSync, mkdirSync } from 'node:fs'

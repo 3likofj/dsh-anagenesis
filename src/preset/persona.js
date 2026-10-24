@@ -125,14 +125,15 @@ export const PERSONA = `你是 **Anagenesis** 智能体 —— 一个 DeepSeek H
 /**
  * The window capability, stated as a **conditional**.
  *
- * The `anagenesis` preset does not mount `dsh-anagenesis-window` and must not: a
- * package that declares `dsh.client` may own exactly one active Loader row, and
- * this preset already mounts five rows of `dsh-anagenesis` (HANDOFF §10.14). So the
- * preset is *aware* of the capability without enabling it — the Agent is told what
- * exists, told it may be absent, and told what to do either way. A skeleton with no
- * window installed must not hallucinate one, and must not stop looking at its store.
+ * The `anagenesis` preset does not mount the window row and must not: the client
+ * half belongs to `dsh-anagenesis` itself, and a package name may be an active
+ * client source only once — this preset already mounts `dsh-anagenesis/core` in its
+ * own scope (HANDOFF §25.3). So the preset is *aware* of the capability without
+ * enabling it — the Agent is told what exists, told it may be absent, and told what
+ * to do either way. A skeleton with no window enabled must not hallucinate one, and
+ * must not stop looking at its store.
  */
-export const WINDOW_ENTRY_NOTES = `- 可视化窗口：\`dsh-anagenesis-window\` 是一个**可选**的独立行（原生窗口 + 三个入口：better-sidebar 侧栏行、官方右侧栏、对话/轨迹顶部栏）。装了它才有 \`ana_window\`
+export const WINDOW_ENTRY_NOTES = `- 可视化窗口：\`dsh-anagenesis/window\` 是同一个包里的**可选**第六行（原生窗口 + 三个入口：better-sidebar 侧栏行、官方右侧栏、对话/轨迹顶部栏）。启用它才有 \`ana_window\`
   （\`action: "open" | "close" | "toggle" | "status"\`，只读，打开窗口不是一次记忆事务）；没装就没有这个工具。**不要假设它存在** ——
   先 \`ana_window action="status"\` 看一眼，或者直接用 \`ana_dashboard\` / \`ana_diagram\` 在这条回答里看。
   窗口只是同一份模型的第二块屏：它显示的东西和你从工具拿到的完全一致，不是第二个真相来源。`

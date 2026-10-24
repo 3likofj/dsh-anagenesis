@@ -3,7 +3,6 @@
 [中文](README.md) · [Changelog](CHANGELOG.md) · Apache-2.0
 
 [![npm](https://img.shields.io/npm/v/dsh-anagenesis?label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis)
-[![npm (window)](https://img.shields.io/npm/v/dsh-anagenesis-window?label=window&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis-window)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](package.json)
 
@@ -18,7 +17,27 @@
 > the injection strategy is switchable at runtime, every change comes with its inverse, self-tuning is
 > bounded, audited and revertible — and the whole store is self-contained, offline and dependency-free.
 
-![The anagenesis desktop window — dashboard](assets/dashboard.png)
+![The anagenesis desktop window — the facility floorplan (default face)](assets/facility.png)
+
+## New in 0.3.0: one package, and a facility floorplan
+
+Two things this release: **the two plugins became one** (the window is no longer a sibling package you
+install separately), and **the dashboard became a facility view** — the memory store drawn as a building
+you can actually operate.
+
+| New | In one line | What you see |
+|---|---|---|
+| **One package** | `dsh-anagenesis-window` folded into `dsh-anagenesis`: one package, six Loader rows (each still individually `disabled: true`), one `dsh.client` half | A **single** install command; row ids and tools unchanged |
+| **Facility view (default face)** | floor = namespace (current project / global / each session), zone = memory kind, sensor = one live record | Icon rail / floorplan / zone detail / status bars |
+| **Real readings** | salience / confidence / freshness, and "per-record energy in this zone vs **the measured building average**" | No number reaches the screen that the model does not contain |
+| **Anomaly desk** | contradicting links, expiring soon, loud-but-stale, dangling links, locked, safe mode, redaction off, read-only tier | Each one carries a count and why it matters |
+| **Live wire** | the real tail of the journal, scrolling at the bottom | What you just changed, at a glance |
+| **Host 0.2.1-rc.2** | all `peerDependencies` raised to `^0.2.1-rc.2`, re-verified with a real Cordis over 98 boot-contract checks | It installs, and it boots |
+
+**Upgrade note (breaking)**: the old `dsh-anagenesis-window` package is **no longer maintained**.
+If you installed it, remove it (`dsh plugin remove dsh-anagenesis-window`, or delete that row from the
+profile `bundles`) and keep `dsh-anagenesis` only — the window is its sixth row now. The window route moved
+to `/anagenesis/api`. The storage format **did not change** (still v7); nothing to migrate.
 
 ## New in 0.2.0: memory is isolated per project, and the preset is a permission switch
 
@@ -131,19 +150,19 @@ the model cannot see them.
 
 ## Install
 
-### Everything at once (recommended: kernel + desktop window)
+### One command
 
-Both packages are published on npm: [`dsh-anagenesis`](https://www.npmjs.com/package/dsh-anagenesis) · [`dsh-anagenesis-window`](https://www.npmjs.com/package/dsh-anagenesis-window) — `dsh plugin add` pulls the latest from npm.
+One package, six Loader rows (kernel / read tools / guard / preset / visualization / desktop window);
+`dsh plugin add` pulls the latest from npm: [`dsh-anagenesis`](https://www.npmjs.com/package/dsh-anagenesis).
 
 ```bash
-dsh plugin add dsh-anagenesis          # kernel: memory + strategies + guard + visualization tools
-dsh plugin add dsh-anagenesis-window   # desktop window (optional, but recommended)
+dsh plugin add dsh-anagenesis
 ```
 
 Then **restart your profile**. Installing registers an agent preset called **`anagenesis`** — pick it in a new session.
 
-> Kernel only? The first command is enough. The window is genuinely optional: the preset knows the
-> capability exists but never assumes it is installed.
+> **Upgrading from 0.2.x**: remove the old window package first (it is no longer maintained), then restart:
+> `dsh plugin remove dsh-anagenesis-window` (or drop that row from the profile `bundles`).
 
 ### From source (if you want to hack on it or track `main`)
 
@@ -151,8 +170,10 @@ Then **restart your profile**. Installing registers an agent preset called **`an
 git clone https://github.com/3likofj/dsh-anagenesis.git
 cd dsh-anagenesis
 dsh plugin --profile desktop add link:<absolute path to this repo>
-dsh plugin --profile desktop add link:<absolute path to this repo>/window   # optional
 ```
+
+`window/` is just a directory of this package now (client half + render layer + window host half),
+not a second package.
 
 ## Five minutes in
 
@@ -160,9 +181,9 @@ dsh plugin --profile desktop add link:<absolute path to this repo>/window   # op
 2. Just work: the agent calls `ana_recall` and `ana_remember` itself — there is no query language to write.
 3. To look at the store, ask the agent for `ana_dashboard` (one TUI frame, right in the answer) or `ana_diagram` (a diagram you can paste into Markdown).
 4. For a live view in a real terminal: `node tools/viz-watch.mjs --watch` (read-only, separate process).
-5. For the desktop window: install the second package, restart, then call `ana_window` or click an entrance.
+5. For the desktop window: restart, then call `ana_window` (it opens the facility view) or click an entrance.
 
-## Capability map (19 tools, layered by permission)
+## Capability map (20 tools, layered by permission)
 
 **Read tier — installed with the plugin**
 
@@ -216,15 +237,32 @@ boundary is **enforced** (8 monotonic invariants plus the `safeMode` freeze), no
 
 ## What you can see
 
+![Facility view — floorplan / zone detail / anomalies / wire](assets/facility.png)
+
 ![Memory graph (horizontal)](assets/graph-lr.png)
 
 ![Lifecycle transitions](assets/lifecycle.png)
 
 ![Strategy timeline](assets/timeline.png)
 
+<details>
+<summary>The dashboard face (the other face)</summary>
+
+![Dashboard](assets/dashboard.png)
+
+</details>
+
 - **TUI dashboard** (`ana_dashboard`): overview, lifecycle distribution, kind distribution, strategy stacks and health, tuning knobs that deviate from their defaults, journal tail, salience ranking, and the renderer's own health. Width-exact, including CJK labels; colour only when asked for.
 - **Text diagrams** (`ana_diagram`): Mermaid (default) / D2 / ASCII, three kinds — the belief graph (with `supports` / `contradicts` / `supersedes` edges), the strategy timeline, and observed lifecycle transitions (only what the journal really recorded; `lock` / `expire` style destination-only events are labelled as such instead of inventing a source edge).
-- **Desktop window** (optional sibling package): Chinese cards and a hand-rolled inline-SVG directed graph (LR/TB plus zoom) produced by the same pure functions, with three entrance seats (better-sidebar row / official right sidebar / conversation header), reading the store as a read-only mirror.
+- **Facility view** (the window's default face, `method=facility`): floor = namespace, zone = memory kind,
+  sensor = one live record; the only readings are real ones (salience / confidence / freshness / per-record
+  energy vs the measured building baseline); the anomaly desk lists contradicting links, expiring soon,
+  loud-but-stale, dangling links, locked, safe mode, redaction off and the read-only tier; the bottom wire is
+  the real journal tail. No number reaches the screen that the model does not contain.
+- **Desktop window** (sixth row of the same package): three faces — facility, dashboard, graph — sharing one
+  set of pure functions that emit Chinese cards and a hand-rolled inline-SVG directed graph (LR/TB plus zoom),
+  with three entrance seats (better-sidebar row / official right sidebar / conversation header), reading the
+  store as a read-only mirror.
 - Rendering is a **read-only projection**: a render is not a transaction. The only optional write, `auditRenders`, is off by default; `tools/viz-watch.mjs` is an independent read-only process that can redraw continuously in a real terminal.
 
 ## Where the data lives, and privacy

@@ -3,6 +3,55 @@
 本文件记录每次发布的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] — 2026-10-24
+
+> 一个包，六个行，一块新的默认屏。
+>
+> **破坏性变更**（按 semver 因此是 minor）：`dsh-anagenesis-window` **停止更新**，窗口成为同一个
+> `dsh-anagenesis` 的第六行与 `dsh.client` 半；窗口路由从 `/anagenesis-window/api` 改为
+> `/anagenesis/api`；ModuleLoader id 从 `dsh-anagenesis-window` 改为 `dsh-anagenesis`；
+> `peerDependencies` 抬到 `^0.2.1-rc.2`（预发布版本的比较器只在三段完全相同时才接受，
+> 所以 `^0.2.0-rc.2` **不会**接受 0.2.1-rc.2）。存储格式**没有变**（仍是 v7），升级不需要迁移。
+
+### 新增
+
+- **设施仪表盘（窗口的默认面）**：把记忆库当成一栋**可运维的楼**来画 ——
+  楼层 = 命名空间（当前项目 / 全局 / 每个会话），分区 = 记忆类型（8 种 kind），
+  传感器 = 一条活跃记忆，读数 = 显著度 / 置信度 / 新鲜度，能耗对比 = 本分区单条记录的
+  能量 vs **全楼实测均值**（不是拍出来的目标值），告警列表 = 矛盾链接 / 即将过期 / 高显著但陈旧 /
+  悬空链接 / 锁定 / 安全模式 / 脱敏关闭 / 只读档位，底部电文条 = 日志尾部真实事件流。
+  - 数据在 `src/viz/facility.js`（纯函数、只读镜像、lossless JSON，12 条测试），
+    渲染在 `window/src/render/45-facility.js`，样式是同一份 `ANA_CSS` 里的 `gx-*` 规则
+    （布局参考 Kombai GridSense 的排版与配色语言：冷调石板白画布 + 黑色 chrome +
+    信号黄/红/蓝 + 直角几何 + 等宽数字）。
+  - 新 RPC 方法 `method=facility`；`ana_window view="facility"` 打开的就是它。
+    模型里没有的数字**不会出现在屏幕上** —— 这是这一屏的验收口径。
+  - 点分区是**纯本地重绘**（模型不变就不发请求）；窗口宽度变化走容器查询降级，不是另做一套布局。
+
+### 变更
+
+- **两个包合并为一个（`dsh-anagenesis`）**：`dsh-anagenesis-window` 的 Host 半、client 半、
+  共享渲染层与工具全部搬进同一个包，六个 Loader 行仍各自可单独 `disabled: true`。
+  合法性来自 `@deepseek-ai/dsh-client-modules` 的**真实**约束：同一个**包名**只能有一个活跃
+  client source，而子路径 specifier（`dsh-anagenesis/tools`）根本不算 source ——
+  所以「裸包名只出现一次」才是硬约束，不是"只能有一行"。
+  - 行：`anagenesis-core`（**唯一**用裸名）/ `tools` / `guard` / `preset` / `viz` / `window`。
+  - `anagenesis` 预设组合里的 core 行改为 `dsh-anagenesis/core`（在自己的 baseUrl 下再挂裸名
+    会成为第二个 source，整个包的 client 半会被拒）。
+  - 安装现在只有**一条命令**；`window/package.json`、`window/cordis.patch.yml`、`window/LICENSE`
+    已删除，`window/` 只是本包的一个目录。
+- **适配宿主 0.2.1-rc.2**：开工前用真 Cordis + 真 `defineTool` + 真预设注册表复跑 98 项启动契约，
+  0.2.0-rc.2 → 0.2.1-rc.2 **没有破坏**任何一行用到的 API 假设；`peerDependencies` 随之抬版。
+- **打包/发布自检跟着合并改写**：`npm run preflight` 现在守住「孪生包身份不再出现」「裸名只出现一次」
+  「README 不再让用户装第二个包」「CHANGELOG 有当前版本」；`npm run gate:pack` 真打包后断言
+  安装态里 `window/client.js`、六个 exports 子路径、`facility` 方法与 ModuleLoader id 全都对得上。
+
+### 修复
+
+- `npm run check` 之前没有覆盖 `src/viz/facility.js`，新文件不进语法闸门 —— 已加入清单。
+- 窗口的降级路径补上设施面：Host 半还是旧版本时，设施面降级成文本帧并说明「重启桌面端后
+  这里会变成楼层平面图」，而不是把「未知方法」当成失败糊在用户脸上。
+
 ## [0.2.1] — 2026-10-10
 
 > 修一个只在**升级路径**上出现的缺陷：`0.2.0` 在旧存储上会看不到日志。

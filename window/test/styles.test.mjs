@@ -64,13 +64,56 @@ function diagramModel(kind) {
   }
 }
 
+/** 一份形状正确的设施模型（与 `src/viz/facility.js` 同构）。 */
+function facilityModel() {
+  return {
+    kind: 'facility', version: 1, generatedAt: 1_700_000_000_000, origin: 'mirror',
+    redaction: { level: 'secrets', note: '' },
+    building: {
+      storeVersion: 3, schemaVersion: 7, safeMode: false, records: 2, live: 2,
+      namespaces: 1, projects: 1, floors: 1, floorsShown: 1, stacks: [{ scope: 'global', stack: ['guard', 'exploit'] }],
+      gear: 'none', mirror: true,
+    },
+    metrics: {
+      records: 2, live: 2, states: { active: 1, draft: 1 }, kinds: { fact: 2 }, salience: 0.8, confidence: 0.9,
+      links: 1, orphanLinks: 0, expiringSoon: 0, staleHot: 0, conflicts: 0, locked: 1, retired: 0, events: 3,
+    },
+    baseline: { energyPerRecord: 1.1, liveRecords: 2 },
+    floors: [{
+      id: 'project:p1_abc', label: 'anagenesis', detail: 'p1_abc', tier: 'project', count: 2, live: 2,
+      states: { active: 1, draft: 1 }, share: 1, lastAt: 1_700_000_000_000,
+      zones: [{
+        id: 'project:p1_abc/fact', floor: 'project:p1_abc', kind: 'fact', count: 2, live: 2,
+        states: { active: 1, draft: 1 }, topState: 'active', share: 1, salience: 0.8, confidence: 0.9,
+        freshnessHours: 2, energy: 1.4, energyRatio: 1.27, sensorIds: ['mem-a', 'mem-missing'],
+      }],
+    }],
+    sensors: [{
+      id: 'mem-a', label: '一条记忆', gist: '摘要', bodyPreview: '', kind: 'fact', state: 'active',
+      tier: 'project', namespace: 'project:p1_abc', salience: 0.9, confidence: 0.9, accessCount: 2,
+      ageHours: 1, expiresInHours: 5, links: 1, tags: ['a'], redacted: false,
+    }],
+    anomalies: [
+      { code: 'locked', level: 'info', title: '1 pinned record(s)', detail: '钉住的记录不会衰减', ref: 'mem-a', ageHours: 0 },
+      { code: 'empty', level: 'warn', title: 'w', detail: 'd', ref: '', ageHours: 0 },
+      { code: 'safe-mode', level: 'alert', title: 'a', detail: 'd', ref: '', ageHours: 0 },
+    ],
+    anomaliesTotal: 3,
+    ticker: [{ seq: 7, type: 'memory.promote', ageMs: 60_000 }],
+    limit: { sensors: 24, events: 8, anomalies: 8, floors: 6 },
+  }
+}
+
 /** 渲染层会产出的所有 HTML（每一个面、每一种图）。 */
 function everyRenderedHtml() {
   const out = [
     R.renderDashboardHtml(dashboardModel()),
     R.dashboardLegendHtml(),
+    R.renderFacilityHtml(facilityModel(), { view: 'facility', zone: 'project:p1_abc/fact' }),
+    R.renderFacilityHtml(facilityModel(), { view: 'facility' }),
     R.renderTitlebarHtml({ title: '标题' }),
     R.renderFooterHtml({ origin: 'mirror', storeVersion: 1, lastAt: Date.now(), busy: true, warnings: ['w'], error: 'boom', degraded: 'frame' }),
+    R.renderToolbarHtml({ view: 'facility', redaction: 'secrets', width: 96 }),
     R.renderToolbarHtml({ view: 'dashboard', redaction: 'secrets', width: 96 }),
     R.renderToolbarHtml({ view: 'graph', kind: 'memory-graph', direction: 'TB', zoom: 1.2, maxNodes: 40, redaction: 'strict' }),
     R.renderTextFallbackHtml('FRAME', '旧版本'),

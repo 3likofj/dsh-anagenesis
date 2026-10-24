@@ -342,6 +342,212 @@ color:var(--ana-accent);font:inherit;font-weight:650;cursor:pointer}
 .ana-launch-btn:hover{background:color-mix(in srgb,var(--ana-accent) 22%,transparent)}
 .ana-launch-hint{color:var(--ana-fg2);font-size:12px;max-width:48ch}
 
+/* ── 设施视图（运维仪表盘）───────────────────────────────────────────────
+   参考 Kombai GridSense 的排版与配色语言：冷调石板白画布 + 黑色金属 chrome +
+   信号黄/红/蓝 + Bauhaus 平面几何（直角、粗黑描边、硬阴影），标题 Space Grotesk、
+   数字一律等宽。**事实来源仍是模型**：面积 = 分区占比，条宽 = 显著度/能量比，
+   告警条数 = 模型里的 anomalies。这里没有装饰性读数。
+   尺寸随窗口宽度走（container query），因为窗口可以被拖动缩放。 */
+.gx-shell{--gx-canvas:#EDF0F6;--gx-canvas-2:#E4E9F0;--gx-panel:#FFFFFF;
+--gx-ink:#0F1014;--gx-chrome:#0F1014;--gx-chrome-2:#0A0C10;
+--gx-line:#C6CCD8;--gx-line-2:#AEB6C4;--gx-muted:#5A6272;
+--gx-red:#D83024;--gx-yellow:#F0C030;--gx-blue:#2448C0;--gx-green:#2C7A4B;
+--gx-mono:ui-monospace,"JetBrains Mono","Cascadia Mono",Consolas,monospace;
+--gx-sans:"Space Grotesk","Inter","Segoe UI",system-ui,"Microsoft YaHei",sans-serif;
+container-type:inline-size;display:flex;flex-direction:column;height:100%;min-height:0;
+background:var(--gx-canvas);color:var(--gx-ink);font-family:var(--gx-sans);font-size:12.5px;line-height:1.45}
+.gx-shell *{box-sizing:border-box}
+
+/* 顶条：黑色 chrome */
+.gx-top{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;
+height:50px;padding:0 14px;background:var(--gx-chrome);color:#F2F4F8;border-bottom:2px solid var(--gx-chrome-2)}
+.gx-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.gx-mark{display:inline-flex;align-items:flex-end;gap:3px;height:17px;flex:0 0 auto}
+.gx-mark i{display:block;width:4px;background:var(--gx-yellow)}
+.gx-mark i:nth-child(1){height:8px;background:var(--gx-red)}
+.gx-mark i:nth-child(2){height:12px;background:var(--gx-yellow)}
+.gx-mark i:nth-child(3){height:17px;background:var(--gx-blue)}
+.gx-brand-name{font-size:13px;font-weight:700;letter-spacing:.16em;white-space:nowrap}
+.gx-brand-sub{font-size:10.5px;letter-spacing:.14em;color:#8E97A8;white-space:nowrap;
+overflow:hidden;text-overflow:ellipsis;min-width:0}
+.gx-topmeta{display:flex;align-items:center;gap:9px;min-width:0;overflow:hidden}
+.gx-kv{display:inline-flex;align-items:baseline;gap:6px;font-size:11px;white-space:nowrap;min-width:0}
+.gx-kv i{font-style:normal;color:#8E97A8;letter-spacing:.08em}
+.gx-kv b{font-family:var(--gx-mono);font-weight:600;font-variant-numeric:tabular-nums;
+overflow:hidden;text-overflow:ellipsis;max-width:15ch}
+.gx-pill{display:inline-flex;align-items:center;height:18px;padding:0 7px;flex:0 0 auto;
+font-size:9.5px;font-weight:700;letter-spacing:.12em;border:1px solid currentColor}
+.gx-pill--bad{color:#FF7062;background:rgba(216,48,36,.2)}
+.gx-pill--warn{color:#F5CE63;background:rgba(240,192,48,.14)}
+.gx-pill--ok{color:#7FD6A2;background:rgba(44,122,75,.18)}
+.gx-clock{font-family:var(--gx-mono);font-size:11px;font-variant-numeric:tabular-nums;color:#C9D0DC;flex:0 0 auto}
+
+/* 主体：左侧图标栏 / 中央平面图 / 右侧分区详情 */
+.gx-body{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:52px minmax(0,1fr) 286px;
+background:var(--gx-canvas)}
+.gx-rail{display:flex;flex-direction:column;gap:2px;padding:8px 0;overflow:hidden;
+background:var(--gx-chrome-2);color:#7E8798}
+.gx-rail-btn{appearance:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+width:100%;height:46px;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;
+font:inherit;font-size:9.5px;letter-spacing:.04em}
+.gx-rail-btn:hover{color:#E7EAF0;background:rgba(255,255,255,.07)}
+.gx-rail-btn--on{color:var(--gx-ink);background:var(--gx-yellow);font-weight:700}
+.gx-rail-label{display:block;line-height:1}
+.gx-rail-gap{flex:1 1 auto}
+
+/* 平面图 */
+.gx-canvas{min-width:0;overflow:auto;padding:13px 15px;
+background:linear-gradient(90deg,rgba(15,16,20,.045) 1px,transparent 1px) 0 0/24px 24px,
+linear-gradient(0deg,rgba(15,16,20,.045) 1px,transparent 1px) 0 0/24px 24px,
+var(--gx-canvas)}
+.gx-canvas-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;
+margin-bottom:10px;padding-bottom:7px;border-bottom:1.5px solid var(--gx-ink)}
+.gx-kicker{font-size:9.5px;font-weight:700;letter-spacing:.18em;color:var(--gx-muted)}
+.gx-h2{margin:1px 0 0;font-size:17px;font-weight:700;letter-spacing:.01em}
+.gx-h3{margin:1px 0 0;font-size:14px;font-weight:700}
+.gx-legend{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:10px;color:var(--gx-muted);
+justify-content:flex-end;max-width:60%}
+.gx-legend-item{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.gx-swatch{display:block;width:9px;height:9px;border:1px solid rgba(15,16,20,.28);flex:0 0 auto}
+.gx-swatch--ok{background:var(--gx-green)}
+.gx-swatch--warn{background:var(--gx-yellow)}
+.gx-swatch--bad{background:var(--gx-red)}
+.gx-swatch--ink{background:repeating-linear-gradient(90deg,var(--gx-ink) 0 2px,transparent 2px 4px)}
+
+/* 楼层 = 命名空间。硬阴影 + 粗黑描边是整套语言的骨架。 */
+.gx-floors{display:flex;flex-direction:column;gap:10px}
+.gx-floor{border:1.5px solid var(--gx-ink);background:var(--gx-panel);box-shadow:3px 3px 0 rgba(15,16,20,.12);
+overflow:hidden}
+.gx-floor--on{border-color:var(--gx-blue);box-shadow:3px 3px 0 var(--gx-blue)}
+.gx-floor-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto 58px;align-items:center;gap:9px;
+padding:5px 9px;border-bottom:1.5px solid currentColor;background:var(--gx-canvas-2)}
+.gx-floor-no{font-family:var(--gx-mono);font-size:11px;color:var(--gx-muted);font-variant-numeric:tabular-nums}
+.gx-floor-name{font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gx-floor-tag{font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--gx-muted);
+border:1px solid var(--gx-line-2);padding:0 5px;white-space:nowrap}
+.gx-floor-meta{font-family:var(--gx-mono);font-size:10px;color:var(--gx-muted);
+font-variant-numeric:tabular-nums;white-space:nowrap}
+.gx-floor-bar{position:relative;display:block;height:6px;background:#DDE2EA;border:1px solid var(--gx-line)}
+.gx-floor-bar i{display:block;height:100%;background:var(--gx-ink)}
+
+/* 分区 = 记忆类型。宽度 = 占比（最小 22%），所以"小但有事"的格子不会被挤没。 */
+/* 分区在**一行里**按占比分宽，绝不换行、绝不横向滚动：一个楼层里的每一种记忆类型
+   都必须看得见。（第一版用过 overflow-x:auto，6 个分区里有两个被推到视口外 ——
+   截图里 "9/9 活跃" 的楼层只画出了 7 条记录的面积。这是这一屏最容易骗过自己的地方。）
+   flex-grow 让一行正好铺满，因此同一层内各格宽度的**相对**比例就是占比；
+   跨行比较没有意义，所以这里只有一行。外层负 margin + 楼层壳 overflow:hidden
+   把贴边的那两条描边裁掉。 */
+.gx-zones{display:flex;align-items:stretch;margin:0 -1.5px -1.5px 0}
+.gx-zone{position:relative;appearance:none;display:flex;flex-direction:column;justify-content:space-between;
+flex:1 1 var(--gx-zone-w,33%);min-width:0;min-height:76px;padding:7px 8px 6px 11px;border:0;
+border-right:1.5px solid var(--gx-ink);border-bottom:1.5px solid var(--gx-ink);
+background:var(--gx-panel);color:inherit;font:inherit;text-align:left;cursor:pointer;overflow:hidden}
+.gx-zone:hover{background:var(--gx-canvas)}
+.gx-zone--on{background:var(--gx-canvas-2);box-shadow:inset 0 0 0 2px var(--gx-blue)}
+.gx-zone-strip{position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--gx-line-2)}
+.gx-zone--ok .gx-zone-strip{background:var(--gx-green)}
+.gx-zone--warn .gx-zone-strip{background:var(--gx-yellow)}
+.gx-zone--bad .gx-zone-strip{background:var(--gx-red)}
+.gx-zone-body{display:flex;flex-direction:column;gap:4px;min-width:0}
+.gx-zone-name{font-size:11.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gx-zone-num{font-family:var(--gx-mono);font-size:13px;font-variant-numeric:tabular-nums;line-height:1.1}
+.gx-zone-num small{font-size:10px;color:var(--gx-muted)}
+.gx-zone-bar{display:block;height:4px;background:#E1E6EE;border:1px solid var(--gx-line)}
+.gx-zone-bar i{display:block;height:100%;background:var(--gx-ink)}
+.gx-zone-dots{display:flex;flex-wrap:wrap;gap:3px;min-height:7px}
+.gx-zone-floor{position:absolute;right:6px;bottom:3px;max-width:62%;overflow:hidden;white-space:nowrap;
+text-overflow:ellipsis;font-family:var(--gx-mono);font-size:8.5px;color:var(--gx-muted);letter-spacing:.04em}
+
+/* 传感器 = 一条记忆。方块而不是圆点：整套视觉是直角几何。 */
+.gx-dot{display:block;width:7px;height:7px;flex:0 0 auto;background:var(--gx-line-2)}
+.gx-dot--ok{background:var(--gx-green)}
+.gx-dot--okBright{background:#2FA05F}
+.gx-dot--warn{background:var(--gx-yellow)}
+.gx-dot--bad{background:var(--gx-red)}
+.gx-dot--info{background:var(--gx-blue)}
+.gx-dot--violet{background:#6D46C8}
+.gx-dot--dim{background:var(--gx-line-2)}
+.gx-dot--none{background:transparent;border:1px solid var(--gx-line)}
+
+/* 右侧分区详情 */
+.gx-detail{display:flex;flex-direction:column;gap:10px;min-width:0;overflow:auto;padding:12px;
+border-left:1.5px solid var(--gx-ink);background:var(--gx-panel)}
+.gx-detail-head{padding-bottom:6px;border-bottom:1.5px solid var(--gx-ink)}
+.gx-detail-sub{display:block;margin-top:2px;font-size:10px;color:var(--gx-muted);
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gx-detail-empty{margin:0;font-size:11px;color:var(--gx-muted)}
+.gx-readouts{display:flex;flex-direction:column;gap:8px}
+.gx-readout{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:2px 8px}
+.gx-readout-label{font-size:10.5px;color:var(--gx-muted);letter-spacing:.04em}
+.gx-readout-value{font-family:var(--gx-mono);font-size:13px;font-variant-numeric:tabular-nums}
+.gx-readout-value small{margin-left:3px;font-size:8.5px;letter-spacing:.1em;color:var(--gx-muted)}
+.gx-readout-bar{grid-column:1 / -1;display:block;height:5px;background:#E1E6EE;border:1px solid var(--gx-line)}
+.gx-readout-bar i{display:block;height:100%;background:var(--gx-blue)}
+.gx-block{display:flex;flex-direction:column;gap:5px}
+.gx-block-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.gx-block-note{font-size:9px;color:var(--gx-muted);text-align:right}
+.gx-energy-row{display:grid;grid-template-columns:62px minmax(0,1fr) 32px;align-items:center;gap:6px;font-size:11px}
+.gx-energy-name{color:var(--gx-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gx-energy-row--on .gx-energy-name{color:var(--gx-ink);font-weight:700}
+.gx-energy-bar{position:relative;display:block;height:6px;background:#E1E6EE}
+.gx-energy-bar i{display:block;height:100%;background:var(--gx-yellow)}
+.gx-energy-base{position:absolute;top:-2px;bottom:-2px;left:50%;width:2px;background:var(--gx-ink)}
+.gx-energy-num{font-family:var(--gx-mono);font-size:10px;text-align:right;font-variant-numeric:tabular-nums}
+.gx-sensors,.gx-alerts{display:flex;flex-direction:column;gap:5px;margin:0;padding:0;list-style:none}
+.gx-sensor{display:grid;grid-template-columns:9px minmax(0,1fr);gap:6px;align-items:start}
+.gx-sensor-main{display:flex;flex-direction:column;gap:1px;min-width:0}
+.gx-sensor-main b{display:block;font-size:11px;font-weight:600;overflow-wrap:anywhere}
+.gx-sensor-main small{display:block;font-family:var(--gx-mono);font-size:9px;color:var(--gx-muted);
+font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.gx-sensor-exp{margin-left:4px;color:var(--gx-red)}
+.gx-alert{display:grid;grid-template-columns:9px minmax(0,1fr);gap:6px;padding:5px 6px;
+border-left:3px solid var(--gx-line-2);background:var(--gx-canvas-2)}
+.gx-alert--alert{border-left-color:var(--gx-red)}
+.gx-alert--warn{border-left-color:var(--gx-yellow)}
+.gx-alert--info{border-left-color:var(--gx-blue)}
+.gx-alert-dot{margin-top:4px;display:block;width:7px;height:7px;background:var(--gx-line-2)}
+.gx-alert-main{display:flex;flex-direction:column;gap:1px;min-width:0}
+.gx-alert-main b{font-size:11px;font-weight:600;overflow-wrap:anywhere}
+.gx-alert-main small{font-size:9.5px;color:var(--gx-muted);overflow-wrap:anywhere}
+
+/* 底条：实时电文（纯 CSS 滚动，两段同宽，-100% 恰好接缝） */
+.gx-wire{flex:0 0 auto;display:flex;align-items:center;gap:10px;height:30px;padding:0 12px;
+overflow:hidden;background:var(--gx-chrome);color:#D8DDE7;border-top:2px solid var(--gx-chrome-2);font-size:10.5px}
+.gx-wire-live{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;font-size:9px;
+font-weight:700;letter-spacing:.14em;color:#7FD6A2}
+.gx-wire-live i{display:block;width:6px;height:6px;border-radius:50%;background:currentColor;
+animation:gx-blink 1.7s steps(2,start) infinite}
+.gx-wire-live--mirror{color:#F5CE63}
+.gx-wire-track{display:flex;flex:1 1 auto;min-width:0;overflow:hidden}
+.gx-wire-run{display:inline-flex;flex:0 0 auto;animation:gx-wire-scroll 52s linear infinite}
+.gx-wire-item{display:inline-flex;align-items:baseline;gap:5px;margin-right:22px;white-space:nowrap}
+.gx-wire-item b{font-family:var(--gx-mono);font-weight:600;color:#8E97A8}
+.gx-wire-item i{font-style:normal;font-family:var(--gx-mono);font-size:9px;color:#8E97A8}
+.gx-wire-count{flex:0 0 auto;font-family:var(--gx-mono);font-size:9px;color:#8E97A8;
+font-variant-numeric:tabular-nums}
+@keyframes gx-wire-scroll{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+@keyframes gx-blink{50%{opacity:.2}}
+@media (prefers-reduced-motion:reduce){.gx-wire-run,.gx-wire-live i{animation:none}}
+
+/* 空态 / 注脚 */
+.gx-empty{display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:26px;
+border:1.5px dashed var(--gx-line-2);color:var(--gx-muted);background:var(--gx-panel)}
+.gx-empty b{font-size:14px;color:var(--gx-ink)}
+.gx-canvas-note{margin-top:10px;font-size:10px;color:var(--gx-muted);font-family:var(--gx-mono)}
+
+/* 窗口可以被拖动缩放，所以按**容器**宽度降级，而不是按视口。 */
+@container (max-width:760px){
+.gx-body{grid-template-columns:44px minmax(0,1fr) 222px}
+.gx-rail-btn{height:38px}
+.gx-rail-label{display:none}
+.gx-floor-meta{display:none}
+.gx-legend{max-width:46%}
+.gx-brand-sub{display:none}}
+@container (max-width:560px){
+.gx-detail{display:none}
+.gx-body{grid-template-columns:40px minmax(0,1fr)}
+.gx-kv:nth-child(3){display:none}}
+
 /* ── 离线预览页（不在窗口里使用） ──────────────────────────────────────── */
 html[data-ana-preview]{background:#141418}
 html[data-ana-preview] body{margin:0;padding:24px;background:#141418}

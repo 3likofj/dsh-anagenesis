@@ -23,7 +23,7 @@
  * 页边留白、再等比缩放到 1200 / 1500 宽（Pillow LANCZOS）。`graph-tb.png` 与它无关，
  * 它只是同一张图的纵向排布，供人工对照。结构有变时这一步要重跑，否则 README 会停在
  * 旧数据上 —— 上一版就是这样：数据是单命名空间的，图片里根本看不到"另一个项目"。
- * @module dsh-anagenesis-window/tools/preview
+ * @module dsh-anagenesis/tools/preview
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -56,6 +56,7 @@ function findBrowser() {
 /** `puppeteer-core` 住在 profile 的 node_modules 里，从本包解析不到，所以显式定位。 */
 function loadPuppeteer() {
   const bases = [
+    process.env.ANA_PUPPETEER_DIR ? join(process.env.ANA_PUPPETEER_DIR, 'package.json') : null,
     process.env.DSH_PROFILE_DIR ? join(process.env.DSH_PROFILE_DIR, 'package.json') : null,
     join(process.env.DSH_HOME ?? join(process.env.USERPROFILE ?? '', '.dsh'), 'profiles', 'desktop', 'package.json'),
     join(process.env.APPDATA ?? '', '@deepseek-ai', 'dsh-desktop', 'package.json'),
@@ -355,6 +356,7 @@ const storeRoot = options.root === '' ? demo : resolve(options.root)
 
 const { readStoreMirror } = await import(pathToFileURL(join(root, '..', 'src', 'viz', 'mirror.js')).href)
 const { buildDashboardModel, buildDiagramModel } = await import(pathToFileURL(join(root, '..', 'src', 'viz', 'model.js')).href)
+const { buildFacilityModel } = await import(pathToFileURL(join(root, '..', 'src', 'viz', 'facility.js')).href)
 
 const mirror = await readStoreMirror(storeRoot)
 
@@ -391,13 +393,22 @@ const dashModel = buildDashboardModel(source, { width: 96, color: 'never', limit
 const graphModel = buildDiagramModel(source, { kind: 'memory-graph', limit: { nodes: 40, timeline: 12 }, redaction: 'secrets', ...modelOpts })
 const lifeModel = buildDiagramModel(source, { kind: 'lifecycle', limit: { nodes: 40, timeline: 12 }, redaction: 'secrets', ...modelOpts })
 const timeModel = buildDiagramModel(source, { kind: 'strategy-timeline', limit: { nodes: 40, timeline: 12 }, redaction: 'secrets', ...modelOpts })
+/** 设施视图的模型。与上面几份同源（同一份只读镜像），粒度更细。 */
+const facilityModel = buildFacilityModel(source, {
+  now: Date.now(), redaction: 'secrets', includeBody: false,
+  limit: { sensors: 24, events: 8, floors: 6 },
+})
 
 /** 一个视图 = 标题栏 + 工具栏 + 内容 + 页脚（就是窗口里那四段）。 */
 function frame(id, caption, state, body, extraFooter) {
+  // 设施屏要占满内容区（它自己的上下状态条是"贴边"的），所以预览里也给它一个确定的高度。
+  const pane = state.view === 'facility'
+    ? '<div class="ana-pane ana-pane--flush" style="height:660px">'
+    : '<div class="ana-pane">'
   return '<div class="ana-preview-frame" id="' + id + '" data-dsh-anagenesis-window="preview">'
     + R.renderTitlebarHtml({ title: state.title, subtitle: caption })
     + R.renderToolbarHtml(state)
-    + '<div class="ana-pane">' + body + '</div>'
+    + pane + body + '</div>'
     + R.renderFooterHtml(state)
     + (extraFooter === undefined ? '' : extraFooter)
     + '</div>'
@@ -426,6 +437,9 @@ const frames = [
     R.renderDiagramHtml(lifeModel, { direction: 'LR' })),
   frame('frame-timeline', '图表 · 策略时间线', { ...baseState, view: 'graph', kind: 'strategy-timeline' },
     R.renderDiagramHtml(timeModel, {})),
+  // 设施屏是窗口的默认面：楼层平面 / 分区详情 / 告警 / 电文。
+  frame('frame-facility', '设施 —— 楼层平面 + 分区详情', { ...baseState, view: 'facility' },
+    R.renderFacilityHtml(facilityModel, { view: 'facility' })),
 ]
 
 const html = pageFor('anagenesis 可视化预览',
@@ -438,6 +452,7 @@ writeFileSync(htmlPath, html, 'utf8')
 
 /** 每个视图一个独立页面文件，供逐张截图与人工打开。 */
 const perView = [
+  ['facility', '设施平面图', frames[5]],
   ['dashboard', '仪表盘', frames[0]],
   ['graph-lr', '记忆关系图（横向）', frames[1]],
   ['graph-tb', '记忆关系图（纵向）', frames[2]],
@@ -485,8 +500,19 @@ const report = {
     gearTone: String(rowWith('gear')?.tone ?? ''),
     legacyUntagged: String(rowWith('legacy untagged')?.value ?? ''),
   },
+  facility: {
+    floors: facilityModel.floors.length,
+    perFloor: facilityModel.floors.map((floor) => floor.label + ' ' + floor.live + '/' + floor.count
+      + ' [' + floor.zones.map((zone) => zone.kind + ' ' + zone.live + '/' + zone.count).join(', ') + ']'),
+    zones: facilityModel.floors.reduce((total, floor) => total + floor.zones.length, 0),
+    // 每一层的分区条数之和必须等于这一层的条数：否则"面积 = 占比"就是假的。
+    uncovered: facilityModel.floors.filter((floor) => floor.count !== floor.zones.reduce((sum, zone) => sum + zone.count, 0))
+      .map((floor) => floor.label + ':' + floor.count + '/' + floor.zones.reduce((sum, zone) => sum + zone.count, 0)),
+  },
   checks: {
     svgRendered: frames[1].includes('<svg'),
+    facilityRendered: frames[5].includes('gx-shell') && frames[5].includes('gx-floor'),
+    facilityZonesCoverEveryRecord: facilityModel.floors.every((floor) => floor.count === floor.zones.reduce((sum, zone) => sum + zone.count, 0)),
     noMermaidSource: !/classDef|graph LR|flowchart |style \w+ fill:#/.test(html),
     noHexLeak: !/#(111827|1f2937|0f172a)\b/.test(html),
     noRawNodeId: !/ana_mem_/.test(html),

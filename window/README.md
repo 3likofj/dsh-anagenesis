@@ -1,13 +1,16 @@
-# dsh-anagenesis-window
+# dsh-anagenesis/window
 
 [English](README.en.md)
+
+> 这是 **`dsh-anagenesis` 包的一个目录**（第六行 + `dsh.client` 半），不是独立的包。
+> 0.3.0 之前它是一个兄弟包 `dsh-anagenesis-window`，那个包已停止更新。
 
 [dsh-anagenesis](../README.md) 的**桌面窗口**，以及把这块窗口挂到界面上的**三个入口**。
 一个 Loader 行、一份 `dsh.client` 客户端半、一个窗口 —— 三道门。
 
 ```
-dsh-anagenesis           memory · strategy · tuner · guard · ana_dashboard / ana_diagram / TUI
-dsh-anagenesis-window    the native window + its entrances        ← this package
+dsh-anagenesis            memory · strategy · tuner · guard · viz tools        (rows 1–5)
+dsh-anagenesis/window     the native window + its entrances                    (row 6)  ← this directory
 ```
 
 窗口是**同一个模型的第二个呈现面**，绝不是第二个渲染器：它显示的每一段标记都由
@@ -23,19 +26,38 @@ dsh-anagenesis-window    the native window + its entrances        ← this packa
 `MemoryStore` 句柄，因此不在单写者池里，只是重放 `snapshot.json`、日志分段与最新
 checkpoint。渲染不是事务，也就没有需要回滚的逆操作。
 
-## 为什么必须是独立包
+## 为什么它和内核对住在同一个包里
 
-`@deepseek-ai/dsh-client-modules` 允许一个声明了 `dsh.client` 的包**有且只有一个活跃
-Loader 行**。`dsh-anagenesis` 是五行，而 `anagenesis` 预设会在自己的 scope 里把这五行
-再挂一次 —— 在那里加 `dsh.client` 永远启动不起来。这个失败模式已经真实踩过一次并回滚
-（DSH 的硬约束）。所以窗口是一个**单行兄弟包**，并且：
+0.2.x 的结论是"声明了 `dsh.client` 的包只能有一个活跃 Loader 行"，因此窗口被拆成兄弟包。
+0.3.0 读了一遍 `@deepseek-ai/dsh-client-modules@0.2.1-rc.2` 的源码，约束比那条口头的更精确：
 
-> **永远不要把 `dsh-anagenesis-window` 加进 `anagenesis` 预设的组合里，也永远不要在同一个
-> profile 里挂两次。** 预设*知道*这个能力（见 `dsh-anagenesis` 的 `OPERATING_NOTES`），
-> 但有意不挂载它。
+1. `reconcilePackage(packageName)` 统计**同一个包名**的所有 active source，`> 1` 才抛
+   `client-modules: package X resolves from multiple active Loader sources`；
+2. `resolveMeta()` → `locatePkgJson()` 只在 `exactPackageSpecifier(loaderName)` **有值**时
+   才把一行算成 source，而它对**含 `/` 的子路径**一律返回 `undefined`。
 
-由此得到的推论是硬的：`dsh-anagenesis` 本包**永远不能**加 `dsh.client`。窗口是可选项，
-没装它的 profile 只是少了窗口，别的一点都不少。
+所以真正的硬约束是 **「同一个包最多一行用裸包名」**，不是「最多一行」。于是六行同住一个包：
+
+```
+anagenesis-core     name: dsh-anagenesis          ← 唯一用裸名的一行
+anagenesis-tools    name: dsh-anagenesis/tools
+anagenesis-guard    name: dsh-anagenesis/guard
+anagenesis-preset   name: dsh-anagenesis/preset
+anagenesis-viz      name: dsh-anagenesis/viz
+anagenesis-window   name: dsh-anagenesis/window   ← 本目录
+```
+
+由此得到的两条推论仍然是硬的：
+
+> **`anagenesis` 预设组合里的 core 行必须写 `dsh-anagenesis/core`（子路径）。** 预设在自己的
+> baseUrl 下再挂一次裸名 = 同一个包的第二个 source = 整个包的 client 半被拒。预设*知道*
+> 这个能力（见 `OPERATING_NOTES`），但有意不挂载窗口行。
+>
+> **`client.js` 的 ModuleLoader id 必须等于包名 `dsh-anagenesis`**，因为 `dsh.client` 的身份
+> 就是包名；对不上整包加载失败。
+
+窗口依然是可选项：`disabled: true` 掉 `anagenesis-window` 这一行，profile 只是少了窗口，
+别的一点都不少。
 
 ## 入口
 
@@ -133,15 +155,15 @@ cd window && node tools/preview.mjs --root "$DSH_HOME/anagenesis"   # 用真实�
 
 ## 安装
 
+窗口随**同一个包**一起装，没有第二条命令：
+
 ```sh
-# 从本仓库安装（profile 里 dsh-anagenesis 本来就是这样链进去的）
-dsh plugin --profile desktop add link:<仓库绝对路径>/window
+dsh plugin --profile desktop add link:<仓库绝对路径>
 ```
 
-或者写进 `$DSH_PROFILE_DIR/package.json`：
-`"dsh-anagenesis-window": "link:<仓库绝对路径>/window"`，并把 `dsh-anagenesis-window`
-放进 `dsh.profile.bundles`。本包自带 bundle patch（`cordis.patch.yml`）插入那唯一一行
-—— profile 的 `cordis.patch.yml` 不需要手改。
+或者写进 `$DSH_PROFILE_DIR/package.json`：`"dsh-anagenesis": "link:<仓库绝对路径>"`，
+并把 `dsh-anagenesis` 放进 `dsh.profile.bundles`。根 `cordis.patch.yml` 会插入六行
+（包括本目录这一行）—— profile 的 `cordis.patch.yml` 不需要手改。
 
 移除这一行（或移除 bundle）会释放它拥有的每一个 effect：槽位注册、页签类型、`<style>`
 节点、定时器、路由与服务。`test/entries.test.mjs` 对"无残留"这件事断言了两次。
@@ -182,9 +204,9 @@ entries opt back into pointer events — so an occupant never blocks the app und
 且立即生效 —— 不需要重启：
 
 ```sh
-plugin_manager action=install_bundle target=<仓库绝对路径>/window
-# → dependencies += "dsh-anagenesis-window": "link:<仓库绝对路径>/window"
-# → dsh.profile.bundles += "dsh-anagenesis-window"
+plugin_manager action=install_bundle target=<仓库绝对路径>
+# → dependencies += "dsh-anagenesis": "link:<仓库绝对路径>"
+# → dsh.profile.bundles += "dsh-anagenesis"        （六行一起生效，包括窗口这一行）
 # → {"stage":"enable","changed":true,"application":"applied"}
 ```
 

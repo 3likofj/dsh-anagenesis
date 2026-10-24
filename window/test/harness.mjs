@@ -25,7 +25,7 @@
  *   - `ctx.sidebarRightTabs.register({ id, kind, title, guide })` —
  *     `dsh-my-guardian/lib/client.js:1207-1217`.
  *
- * @module dsh-anagenesis-window/test/harness
+ * @module dsh-anagenesis/test/harness
  */
 
 import { readFileSync } from 'node:fs'
@@ -615,7 +615,7 @@ export function evaluateClient(options) {
     throw new Error(`harness: client.js registered ${registered.length} definitions, expected exactly 1`)
   }
   const definition = registered[0]
-  if (definition.id !== 'dsh-anagenesis-window') {
+  if (definition.id !== 'dsh-anagenesis') {
     throw new Error(`harness: client.js registered id "${definition.id}" — it must equal the package name`)
   }
   const exports = definition.factory(requireImpl)

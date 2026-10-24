@@ -1,4 +1,8 @@
-# dsh-anagenesis-window
+# dsh-anagenesis/window
+
+> This is a **directory of the `dsh-anagenesis` package** (its sixth Loader row + the
+> `dsh.client` half), not a package of its own. Before 0.3.0 it was a sibling package
+> called `dsh-anagenesis-window`; that package is no longer maintained.
 
 The **desktop window** of [dsh-anagenesis](../README.md) plus its **three entrance points**.
 One Loader row, one `dsh.client` half, one window — three doors. (The better-sidebar
@@ -6,8 +10,8 @@ bottom-workbench row was removed: it mapped into the same right column as entry 
 read as two rows pointing at one window.)
 
 ```
-dsh-anagenesis           memory · strategy · tuner · guard · ana_dashboard / ana_diagram / TUI
-dsh-anagenesis-window    the native window + its entrances        ← this package
+dsh-anagenesis            memory · strategy · tuner · guard · viz tools        (rows 1–5)
+dsh-anagenesis/window     the native window + its entrances                    (row 6)  ← this directory
 ```
 
 The window is a **second surface for one model**, never a second renderer: every
@@ -15,17 +19,43 @@ pixel in it is produced by `src/viz/model.js` + `tui.js` / `diagram.js` — the 
 pure functions behind `ana_dashboard`, `ana_diagram` and `tools/viz-watch.mjs`. A
 frame in the window and the same frame in a tool answer are byte-identical.
 
-## Why a separate package
+## Why it lives inside the kernel package
 
-`@deepseek-ai/dsh-client-modules` allows a package that declares `dsh.client`
-**exactly one active Loader row**. `dsh-anagenesis` is five rows, and the `anagenesis`
-preset mounts them a second time — adding `dsh.client` there could never boot. That
-failure was hit and reverted once already. So the window is a
-single-row sibling, and:
+The 0.2.x conclusion was "a package declaring `dsh.client` may own exactly one active
+Loader row", so the window was split into a sibling package. 0.3.0 read
+`@deepseek-ai/dsh-client-modules@0.2.1-rc.2` itself, and the rule is more precise:
 
-> **Never add `dsh-anagenesis-window` to the `anagenesis` preset composition and never
-> mount it twice in one profile.** The preset is *aware* of the capability (see
-> `OPERATING_NOTES` in `dsh-anagenesis`) but deliberately does not mount it.
+1. `reconcilePackage(packageName)` counts active sources for the same **package name**
+   and only throws (`client-modules: package X resolves from multiple active Loader
+   sources`) when that count exceeds one;
+2. `resolveMeta()` → `locatePkgJson()` treats a row as a client source only when
+   `exactPackageSpecifier(loaderName)` has a value — and that returns `undefined` for
+   any specifier containing `/`.
+
+So the real constraint is **"one bare package name per package"**, not "one row".
+That is what makes six rows in one package legal:
+
+```
+anagenesis-core     name: dsh-anagenesis          ← the only bare name
+anagenesis-tools    name: dsh-anagenesis/tools
+anagenesis-guard    name: dsh-anagenesis/guard
+anagenesis-preset   name: dsh-anagenesis/preset
+anagenesis-viz      name: dsh-anagenesis/viz
+anagenesis-window   name: dsh-anagenesis/window   ← this directory
+```
+
+Two consequences stay hard:
+
+> **The `anagenesis` preset must mount `dsh-anagenesis/core` (a subpath).** Mounting the
+> bare name a second time, in the preset's own baseUrl, is the second source that gets the
+> whole package's client half rejected. The preset is *aware* of the window capability
+> (`OPERATING_NOTES`) but deliberately does not mount the window row.
+>
+> **`client.js` must register the ModuleLoader id `dsh-anagenesis`** — that id *is* the
+> `dsh.client` identity; a mismatch fails the whole bundle.
+
+The window is still optional: `disabled: true` on `anagenesis-window` costs the profile a
+window and nothing else.
 
 ## The entrances
 
@@ -104,15 +134,15 @@ observed, not typed) and the shape of `guide` entries beyond `{ id, order, title
 
 ## Install
 
+The window ships with the package; there is no second command:
+
 ```sh
-# from this repository (the profile already links dsh-anagenesis the same way)
-dsh plugin --profile desktop add link:<absolute path to this repo>/window
+dsh plugin --profile desktop add link:<absolute path to this repo>
 ```
 
-Or add to `$DSH_PROFILE_DIR/package.json`:
-`"dsh-anagenesis-window": "link:<absolute path to this repo>/window"` and put
-`dsh-anagenesis-window` into `dsh.profile.bundles`. A bundle patch
-(`cordis.patch.yml`) inserts the single row — no `cordis.patch.yml` edits.
+Or add to `$DSH_PROFILE_DIR/package.json`: `"dsh-anagenesis": "link:<absolute path to
+this repo>"` and put `dsh-anagenesis` into `dsh.profile.bundles`. The root bundle patch
+(`cordis.patch.yml`) inserts all six rows, this one included — no manual edits.
 
 Removing the row (or the bundle) disposes every effect it owns: the slot
 registrations, the tab types, the `<style>` node, the timers, the route and the
@@ -153,9 +183,9 @@ The client half is only served when the row is mounted, so **nothing appears unt
 the package is installed**. One command, and it applies live — no restart:
 
 ```sh
-plugin_manager action=install_bundle target=<absolute path to this repo>/window
-# → dependencies += "dsh-anagenesis-window": "link:<absolute path to this repo>/window"
-# → dsh.profile.bundles += "dsh-anagenesis-window"
+plugin_manager action=install_bundle target=<absolute path to this repo>
+# → dependencies += "dsh-anagenesis": "link:<absolute path to this repo>"
+# → dsh.profile.bundles += "dsh-anagenesis"      (six rows, the window row included)
 # → {"stage":"enable","changed":true,"application":"applied"}
 ```
 

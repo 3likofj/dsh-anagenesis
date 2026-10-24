@@ -10,7 +10,7 @@
  * fail). `action: "status"` is the honest read: it reports the profile's
  * installed-plugin facts, the store projection's health, and whether a request is
  * still waiting to be drained.
- * @module dsh-anagenesis-window/host/tool
+ * @module dsh-anagenesis/host/tool
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -56,7 +56,7 @@ export function registerWindowTool(tools, deps) {
   return tools.register(defineTool({
     name: 'ana_window',
     description: '打开、关闭或查看 anagenesis 桌面可视化窗口 —— 那个自己画出仪表盘与图表（中文卡片、彩色条、'
-      + '真实内联 SVG 关系图）并持续刷新的原生窗口。窗口属于可选的 dsh-anagenesis-window 行；没有装这一行时'
+      + '真实内联 SVG 关系图）并持续刷新的原生窗口。窗口属于可选的 `dsh-anagenesis/window` 行（同一包的第六行）；没有启用这一行时'
       + '本工具不存在，此时 ana_dashboard / ana_diagram 依然是在终端里看存储的方式。只读：窗口绝不写入存储，'
       + '打开窗口也不是一笔记忆事务。',
     parameters: {
@@ -70,7 +70,7 @@ export function registerWindowTool(tools, deps) {
       action: { type: 'string', required: true, description: '实际执行的动作。' },
       delivered: { type: 'string', required: true, description: 'drained（窗口已取走）、pending（还在等 GUI 轮询）或 none。' },
       text: { type: 'string', required: true, description: '人类可读的摘要：发生了什么、接下来预期什么。' },
-      windowInstalled: { type: 'boolean', description: '本 profile 里是否装载了 dsh-anagenesis-window 行。' },
+      windowInstalled: { type: 'boolean', description: '本 profile 里是否装载了 dsh-anagenesis/window 行。' },
       betterSidebarMounted: { type: 'boolean', description: '本 profile 是否装载 DSH-better-sidebar（运行时探测的宿主侧事实）。' },
       expectedEntries: { type: 'array', items: { type: 'string' }, description: '在 betterSidebarMounted 的前提下，本 profile 预测的入口座位。' },
       storeFound: { type: 'boolean', description: 'anagenesis 存储是否已经存在。' },
@@ -105,7 +105,7 @@ export function registerWindowTool(tools, deps) {
           storeVersion: Number(status.storeVersion ?? 0),
           pending: waiting.pending,
           text: [
-            `anagenesis 可视化窗口：已装载（dsh-anagenesis-window）。`,
+            `anagenesis 可视化窗口：已装载（dsh-anagenesis/window）。`,
             `本 profile ${facts.betterSidebarMounted ? '已装' : '未装'} DSH-better-sidebar，据此预测的入口：${entries}。`,
             `存储：${status.storeFound ? `${status.root}（version ${status.storeVersion}）` : `${status.root} — 尚未创建`}。`,
             waiting.pending ? '有一条打开请求仍在等待 GUI 轮询取走。' : '当前没有等待中的打开请求。',
@@ -168,7 +168,8 @@ export function probeProfile(ctx) {
       const name = String(options.name ?? '')
       if (entryId !== '') entryIds.push(entryId)
       if (name === 'dsh-better-sidebar') betterSidebarMounted = true
-      if (name === 'dsh-anagenesis-window') windowRows += 1
+      // 合并后窗口是**父包的第六行**（子路径 specifier），不再是独立的包名。
+      if (name === 'dsh-anagenesis/window' || name === 'dsh-anagenesis-window') windowRows += 1
     }
     return { betterSidebarMounted, loaderVisible: true, entryIds, windowRows }
   } catch {

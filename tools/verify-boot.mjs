@@ -623,9 +623,9 @@ async function runChecks(paths) {
       parseError === null ? `${Array.isArray(patch) ? patch.length : 0} top-level entr(ies)` : `${parseError?.name}: ${parseError?.message}`)
     const rows = (patch ?? []).find((entry) => entry?.insert !== undefined)?.insert ?? []
     const rowIds = rows.map((row) => row.id)
-    check('bundle: the patch inserts the five rows, each with a unique id',
-      rowIds.length === 5 && new Set(rowIds).size === 5
-      && ['anagenesis-core', 'anagenesis-tools', 'anagenesis-guard', 'anagenesis-preset', 'anagenesis-viz'].every((id) => rowIds.includes(id)),
+    check('bundle: the patch inserts the six rows, each with a unique id',
+      rowIds.length === 6 && new Set(rowIds).size === 6
+      && ['anagenesis-core', 'anagenesis-tools', 'anagenesis-guard', 'anagenesis-preset', 'anagenesis-viz', 'anagenesis-window'].every((id) => rowIds.includes(id)),
       `ids=${rowIds.join(', ')}`)
 
     // The row modules this package actually exports, by id.
@@ -635,6 +635,8 @@ async function runChecks(paths) {
       'anagenesis-guard': { module: await import(new URL('../src/guard/index.js', import.meta.url).href), expected: 'dsh-anagenesis/guard' },
       'anagenesis-preset': { module: await import(new URL('../src/preset/index.js', import.meta.url).href), expected: 'dsh-anagenesis/preset' },
       'anagenesis-viz': { module: await import(new URL('../src/viz/index.js', import.meta.url).href), expected: 'dsh-anagenesis/viz' },
+      // 第六行：窗口的 Host 半。同包不同目录，用子路径 specifier 挂载。
+      'anagenesis-window': { module: await import(new URL('../window/src/index.js', import.meta.url).href), expected: 'dsh-anagenesis/window' },
     }
     const nameMismatch = []
     const configProblems = []
@@ -1346,24 +1348,25 @@ async function main() {
       !existsSync(join(PACKAGE_ROOT, 'node_modules')), `${join(PACKAGE_ROOT, 'node_modules')} does not exist`)
 
     // Tripwire for a defect this package actually hit (2026-10-06, live): a
-    // package that declares `dsh.client` may own exactly ONE active Loader row.
+    // package that declares `dsh.client` may be an active client source only ONCE.
     // `@deepseek-ai/dsh-client-modules` resolves a client source *per row* and
-    // throws when several rows land on one package:
-    //   "client-modules: package X resolves from multiple active Loader sources:
-    //    …; remove one entry"
-    // With four rows plus a preset that mounts them again, the client entry never
-    // materialises (no settings panel) and preset composition stops activating.
-    // Keeping four independently disableable rows is the better trade, so the
-    // client half stays out until it can ship as its own single-row package.
+    // throws when several rows land on one package name:
+    //   "client-modules: package X resolves from multiple active Loader sources"
+    // The precise form of that rule (read off 0.2.1-rc.2, HANDOFF §25.3) is one
+    // source per *package name*: `exactPackageSpecifier()` returns undefined for a
+    // subpath specifier, so `dsh-anagenesis/tools` is not a source at all. That is
+    // what makes the merged layout legal — six rows, exactly one bare name.
     const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8'))
-    const rows = readFileSync(join(PACKAGE_ROOT, 'cordis.patch.yml'), 'utf8')
-      .split('\n').filter((line) => /^\s*name:\s*dsh-anagenesis\b/.test(line))
+    const rowNames = readFileSync(join(PACKAGE_ROOT, 'cordis.patch.yml'), 'utf8')
+      .split('\n')
+      .filter((line) => /^\s*name:\s*dsh-anagenesis/.test(line))
+      .map((line) => line.replace(/^\s*name:\s*/, '').trim())
+    const bareNames = rowNames.filter((name) => name === 'dsh-anagenesis')
     const clientHalf = manifest.dsh?.client?.platform === 'web'
-    check('safety: a client half is only declared by a single-row package',
-      !(clientHalf && rows.length > 1),
-      clientHalf
-        ? `dsh.client is declared while the bundle patch inserts ${rows.length} rows`
-        : `no dsh.client — the ${rows.length} rows stay legal`)
+    check('safety: the bare package name is used by exactly one row (the client-modules rule)',
+      bareNames.length === 1 && clientHalf,
+      `dsh.client=${clientHalf ? 'web' : 'absent'} · ${rowNames.length} row(s) · bare name used ${bareNames.length}× · `
+      + `subpaths: ${rowNames.filter((name) => name.startsWith('dsh-anagenesis/')).join(', ') || 'none'}`)
 
     // Unscored witnesses for the two directories that belong to the user. The
     // live host may write them at any moment, so a change here is evidence about

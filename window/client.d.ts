@@ -1,12 +1,12 @@
 /**
- * Public type face of the dsh-anagenesis-window **client half**.
+ * Public type face of the dsh-anagenesis **client half** (lives in `window/`).
  *
  * This is a hand-written declaration for a hand-written classic script (the
  * `dsh.client` bundle cannot be ESM, so there is no emitted `.d.ts` to ship). It
  * exists so a consumer can write
  *
  * ```ts
- * import type {} from 'dsh-anagenesis-window/client'   // merges ctx.anagenesisWindow
+ * import type {} from 'dsh-anagenesis/client'   // merges ctx.anagenesisWindow
  * export const inject = ['anagenesisWindow']
  * export function apply(ctx: Context) {
  *   ctx.anagenesisWindow.entryStates()   // typed
@@ -237,7 +237,7 @@ export interface AnagenesisWindowService {
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    /** Published by the dsh-anagenesis-window client half. */
+    /** Published by the dsh-anagenesis client half. */
     anagenesisWindow: AnagenesisWindowService
   }
 }

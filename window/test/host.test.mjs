@@ -5,7 +5,7 @@
  * The store this exercises is written by the plugin's own schema helpers and then
  * read back through the same mirror the standalone TUI uses — so "the window is
  * read-only" is checked against a real directory, not a mock.
- * @module dsh-anagenesis-window/test/host
+ * @module dsh-anagenesis/test/host
  */
 
 import test from 'node:test'
@@ -214,7 +214,7 @@ test('host: the route answers the method table and refuses anything else', async
     const ping = fakeExchange('method=ping')
     await handler(ping.request, ping.response)
     assert.equal(ping.response.status, 200)
-    assert.equal(ping.response.json().package, 'dsh-anagenesis-window')
+    assert.equal(ping.response.json().package, 'dsh-anagenesis')
 
     const bad = fakeExchange('method=destroyEverything')
     await handler(bad.request, bad.response)
@@ -368,6 +368,32 @@ test('host: the model methods return structured data, not rendered text', async 
     }
     assert.equal(typeof graphModel.totals.byState, 'object')
 
+    // 设施模型：楼层（命名空间）/ 分区（记忆类型）/ 传感器（记录）/ 告警 / 电文。
+    // 它和仪表盘读的是同一份只读镜像，粒度更细，所以这里断言"每一层都有可渲染的数字"。
+    const facility = await renderer.facility({ events: 4, salience: 3 })
+    assert.equal(facility.ok, true)
+    assert.equal(facility.empty, false)
+    const facilityModel = facility.model
+    assert.equal(facilityModel.kind, 'facility')
+    assert.equal(typeof facilityModel.version, 'number')
+    assert.ok(Array.isArray(facilityModel.floors) && facilityModel.floors.length > 0, 'a store with memories has at least one floor')
+    const floor = facilityModel.floors[0]
+    for (const key of ['id', 'label', 'tier', 'count', 'live', 'share', 'zones']) {
+      assert.ok(key in floor, `a floor without "${key}" cannot be drawn`)
+    }
+    assert.ok(floor.zones.length > 0, 'and a floor that has records has at least one zone')
+    const zone = floor.zones[0]
+    for (const key of ['id', 'kind', 'count', 'live', 'share', 'salience', 'confidence', 'freshnessHours', 'energyRatio', 'sensorIds']) {
+      assert.ok(key in zone, `a zone without "${key}" has no area, bar or dots`)
+    }
+    assert.ok(facilityModel.sensors.length > 0, 'the sensor rail carries the records themselves')
+    assert.equal(typeof facilityModel.baseline.energyPerRecord, 'number', 'the energy bars compare against a measured baseline')
+    assert.ok(Array.isArray(facilityModel.anomalies))
+    assert.ok(Array.isArray(facilityModel.ticker) && facilityModel.ticker.length <= 4)
+    // 楼层占比之和不会超过 1（画出来就是"楼层在楼里占多少"）。
+    const sum = facilityModel.floors.reduce((total, item) => total + item.share, 0)
+    assert.ok(sum <= 1.0001, `floor shares must stay within the building (got ${sum})`)
+
     // 文本方法照旧可用，且与模型同源（同一次读取，同一个版本）。
     const frame = await renderer.frame({ width: 96 })
     assert.equal(frame.storeVersion, dashModel.store.version)
@@ -376,7 +402,7 @@ test('host: the model methods return structured data, not rendered text', async 
     assert.equal(typeof diagram.text, 'string')
 
     // 没有 undefined 穿过 JSON 缝。
-    for (const payload of [dashboard, graph]) {
+    for (const payload of [dashboard, graph, facility]) {
       assert.equal(JSON.stringify(payload).includes('undefined'), false)
     }
   } finally {
@@ -397,7 +423,13 @@ test('host: a missing store yields an empty model, not an error', async () => {
     const graph = await renderer.graph({ kind: 'lifecycle' })
     assert.equal(graph.ok, true)
     assert.deepEqual(graph.model.transitions, [], 'and a lifecycle diagram with nothing to draw is still a valid model')
-    for (const payload of [dashboard, graph]) {
+
+    const facility = await renderer.facility({})
+    assert.equal(facility.ok, true, 'the facility model keeps the same contract on an absent store')
+    assert.deepEqual(facility.model.floors, [], 'no floors to draw')
+    assert.deepEqual(facility.model.sensors, [])
+    assert.equal(facility.model.anomalies[0].code, 'empty', 'and it says why the plan is empty')
+    for (const payload of [dashboard, graph, facility]) {
       assert.equal(JSON.stringify(payload).includes('undefined'), false)
     }
   } finally {
@@ -476,8 +508,8 @@ test('host: probeProfile reads the Loader entry list, including a second window 
   const host = createHostContext({
     entries: [
       { options: { id: 'better-sidebar', name: 'dsh-better-sidebar' } },
-      { options: { id: 'anagenesis-window', name: 'dsh-anagenesis-window' } },
-      { options: { id: 'anagenesis-window-2', name: 'dsh-anagenesis-window' } },
+      { options: { id: 'anagenesis-window', name: 'dsh-anagenesis/window' } },
+      { options: { id: 'anagenesis-window-2', name: 'dsh-anagenesis/window' } },
       { options: { id: 'disabled-one', name: 'dsh-better-sidebar', disabled: true } },
     ],
   })
@@ -546,18 +578,31 @@ test('host: ana_window predicts the official seat when better-sidebar is absent'
 
 // ── utilities ────────────────────────────────────────────────────────────────
 
-test('host: the bundle patch declares exactly one row whose config keys all exist', () => {
+test('host: the window row is the sixth row of the same package, and only the core row uses the bare name', () => {
+  // 合并后的契约：`dsh.client` 与六行同住一个包。合法性来自 specifier 的**形态**
+  // —— 只有裸包名会被算成 client source（HANDOFF §25.3）。所以这条测试盯的是
+  // "窗口行存在、且用子路径"，而不是上一版的"整份 patch 只有一行"。
+  const text = readFileSync(join(import.meta.dirname, '..', '..', 'cordis.patch.yml'), 'utf8')
+  const rows = text.split('\n').filter((line) => /^\s*- id:\s/.test(line))
+  assert.equal(rows.length, 6, `the bundle inserts six rows, found ${rows.length}`)
+  assert.ok(rows.some((line) => /anagenesis-window/.test(line)), 'the window row lives in the bundle patch')
+  const names = text.split('\n')
+    .filter((line) => /^\s*name:\s*dsh-anagenesis/.test(line))
+    .map((line) => line.replace(/^\s*name:\s*/, '').trim())
+  assert.equal(names.filter((name) => name === 'dsh-anagenesis').length, 1, 'only the core row may use the bare name')
+  assert.equal(names.filter((name) => name.startsWith('dsh-anagenesis/')).length, 5, 'the other five rows are subpaths')
+  assert.ok(names.includes('dsh-anagenesis/window'), 'the window row uses a subpath: `dsh-anagenesis/window`')
+})
+
+test('host: the window row config keys are exactly the ones resolveConfig accepts', () => {
   // Drift guard between the YAML a profile reads at boot and the `Config` schema
   // this row actually resolves. A key that exists in only one of the two is either
   // dead config or a boot-time validation failure, and neither is visible offline.
-  const text = readFileSync(join(import.meta.dirname, '..', 'cordis.patch.yml'), 'utf8')
-  const rows = text.split('\n').filter((line) => /^\s*- id:\s/.test(line))
-  assert.equal(rows.length, 1, 'a dsh.client package may own exactly one active Loader row')
-  assert.match(rows[0], /anagenesis-window/)
-  assert.match(text, /name: dsh-anagenesis-window/)
-
+  const text = readFileSync(join(import.meta.dirname, '..', '..', 'cordis.patch.yml'), 'utf8')
+  const at = text.indexOf('id: anagenesis-window')
+  assert.ok(at > 0, 'the window row must be in the bundle patch')
+  const body = text.slice(at)
   const known = new Set(Object.keys(resolveConfig({})))
-  const body = text.slice(text.indexOf('config:'))
   const declared = body.split('\n')
     .filter((line) => /^\s{8,}[a-zA-Z][a-zA-Z0-9]*:/.test(line))
     .map((line) => line.trim().split(':')[0])

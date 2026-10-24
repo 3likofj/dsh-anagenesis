@@ -6,7 +6,7 @@
  * the documented contract, that an older config key is migrated by name rather than
  * silently reinterpreted, and that the committed `client.js` is the artifact the
  * parts actually describe.
- * @module dsh-anagenesis-window/test/detect.test
+ * @module dsh-anagenesis/test/detect.test
  */
 
 import test from 'node:test'
@@ -24,7 +24,7 @@ const SOURCE = readFileSync(join(root, 'client.js'), 'utf8')
 
 test('detect: the bundle honours the dsh.client classic-script contract', () => {
   assert.match(SOURCE, /window\.__ModuleLoader__\.load\(\{/)
-  assert.ok(SOURCE.includes("id: 'dsh-anagenesis-window'"), 'the ModuleLoader id must be the package name')
+  assert.ok(SOURCE.includes("id: 'dsh-anagenesis'"), 'the ModuleLoader id must be the package name')
   assert.equal(/^import\s/m.test(SOURCE), false, 'a classic script may not use a top-level import')
   assert.equal(/^export\s/m.test(SOURCE), false, 'a classic script may not use a top-level export')
   assert.equal((SOURCE.match(/^window\.__ModuleLoader__\.load\(/gm) ?? []).length, 1, 'exactly one registration statement per bundle')
@@ -59,25 +59,30 @@ test('window: the window opts back into pointer events inside the click-through 
   assert.ok(body.includes('position:fixed'), 'and it is positioned by the frame, not by the layer')
 })
 
-test('packaging: dsh.client is declared here and the row count stays legal', () => {
-  // The invariant that forced this whole package into existence: a package
-  // declaring `dsh.client` may own exactly ONE active Loader row. Checked from both
-  // sides, because the failure mode is a boot error in a composition nobody ran in
-  // a unit test.
-  const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+test('packaging: dsh.client and six Loader rows share one package — legal, because only the bare name counts', () => {
+  // The rule that forced the window out into its own package was stated as "a
+  // `dsh.client` package may own exactly ONE active Loader row". Read off
+  // @deepseek-ai/dsh-client-modules, the precise rule is one active source per
+  // *package name*: `reconcilePackage` counts sources and `exactPackageSpecifier`
+  // returns undefined for a subpath specifier, so `dsh-anagenesis/tools` is not a
+  // source at all (HANDOFF §25.3). This test pins that shape from the package's own
+  // files, because the failure mode is a boot error in a composition no unit test runs.
+  const manifest = JSON.parse(readFileSync(join(root, '..', 'package.json'), 'utf8'))
+  assert.equal(manifest.name, 'dsh-anagenesis')
   assert.equal(manifest.dsh.client.platform, 'web')
   assert.equal(manifest.dsh.client.external, undefined, 'no non-baseline module requests: only React is needed')
   assert.ok(manifest.exports['./client'] !== undefined, 'dsh.client requires the ./client export')
 
-  const patch = readFileSync(join(root, 'cordis.patch.yml'), 'utf8')
-  const insertedIds = patch.split('\n').filter((line) => /^\s*- id:\s/.test(line))
-  assert.equal(insertedIds.length, 1, `exactly one Loader row, found ${insertedIds.length}`)
-  assert.match(insertedIds[0], /anagenesis-window/)
-
-  // And the sibling that must NOT have a client half still does not.
-  const parent = JSON.parse(readFileSync(join(root, '..', 'package.json'), 'utf8'))
-  assert.equal(parent.dsh.client, undefined, 'dsh-anagenesis must never declare dsh.client — it owns five rows')
-  assert.equal(parent.exports['./client'], undefined)
+  const patch = readFileSync(join(root, '..', 'cordis.patch.yml'), 'utf8')
+  const names = patch.split('\n')
+    .filter((line) => /^\s*name:\s*dsh-anagenesis/.test(line))
+    .map((line) => line.replace(/^\s*name:\s*/, '').trim())
+  const bare = names.filter((name) => name === 'dsh-anagenesis')
+  assert.equal(bare.length, 1, `exactly one row may use the bare package name, found ${bare.length}`)
+  assert.equal(names.filter((name) => name.startsWith('dsh-anagenesis/')).length, names.length - bare.length,
+    'every other row must use a subpath specifier')
+  assert.ok(names.includes('dsh-anagenesis/window'), 'the window row is the sixth row of the same package')
+  assert.ok(names.includes('dsh-anagenesis/tools'), 'and the read-tools row is still a subpath')
 })
 
 test('detect: presence alone is not enough — a look-alike service is refused', () => {
@@ -108,7 +113,7 @@ test('detect: capability gating follows features[], not a version comparison', (
   const env = mounted.service.environment()
   assert.equal(env.betterSidebar.present, true)
   assert.equal(env.betterSidebar.canLifecycle, false, 'tabLifecycle is absent from features[]')
-  const descriptor = mounted.betterSidebar.getTab('dsh-anagenesis-window:panel')
+  const descriptor = mounted.betterSidebar.getTab('dsh-anagenesis:panel')
   assert.equal(descriptor.onOpen, undefined, 'no lifecycle callback when the feature is not advertised')
   assert.equal(descriptor.onActivate, undefined)
   mounted.dispose()

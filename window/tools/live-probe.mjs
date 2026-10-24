@@ -16,7 +16,7 @@
  *   node tools/live-probe.mjs                 sandbox store, full report
  *   node tools/live-probe.mjs --root "$DSH_HOME/anagenesis"   the real store, read-only
  *   node tools/live-probe.mjs --json          machine-readable
- * @module dsh-anagenesis-window/tools/live-probe
+ * @module dsh-anagenesis/tools/live-probe
  */
 
 import { createServer, request as httpRequest } from 'node:http'
@@ -116,7 +116,7 @@ function createHostContext() {
       warn: (message) => logs.push({ level: 'warn', message: message }),
       error: (message) => logs.push({ level: 'error', message: message }),
     },
-    loader: { entries: () => [{ options: { id: 'anagenesis-window', name: 'dsh-anagenesis-window' } }] },
+    loader: { entries: () => [{ options: { id: 'anagenesis-window', name: 'dsh-anagenesis/window' } }] },
     get: (name, strict) => {
       if (services.has(name)) return services.get(name)
       if (strict !== false) throw new Error(`cannot resolve "${name}"`)
@@ -226,7 +226,7 @@ try {
   report.steps.push({ step: 'apply registered one route + one tool', ok: true })
 
   const ping = await call('method=ping')
-  if (ping.status !== 200 || ping.body.package !== 'dsh-anagenesis-window') throw new Error('ping did not answer')
+  if (ping.status !== 200 || ping.body.package !== 'dsh-anagenesis') throw new Error('ping did not answer')
   report.steps.push({ step: 'GET ping', ok: true, methods: ping.body.methods })
 
   const config = await call('method=config')
@@ -275,6 +275,27 @@ try {
   report.graph = { kind: model.kind, nodes: model.nodes.length, edges: model.edges.length, states: Object.keys(model.totals.byState).length }
   report.steps.push({ step: 'GET graph → structured model with drawable node labels', ok: true, ...report.graph })
 
+  // 设施视图（窗口的**默认面**）：楼层 / 分区 / 传感器 / 基线 / 告警 / 电文，一个都不能少。
+  const facility = await call('method=facility&events=8&salience=5')
+  if (facility.body.ok !== true) throw new Error('the facility model was refused')
+  const facilityModel = facility.body.model
+  if (facilityModel?.kind !== 'facility') throw new Error('the facility model reported the wrong kind')
+  if (!Array.isArray(facilityModel.floors)) throw new Error('the facility model has no floors')
+  if (!Array.isArray(facilityModel.sensors)) throw new Error('the facility model has no sensors')
+  if (typeof facilityModel.baseline?.energyPerRecord !== 'number') throw new Error('the facility model has no measured baseline')
+  if (facilityModel.floors.length > 0) {
+    const zone = facilityModel.floors[0].zones?.[0]
+    if (zone === undefined) throw new Error('a floor that has records has no zones to draw')
+    for (const key of ['id', 'kind', 'share', 'salience', 'confidence', 'energyRatio']) {
+      if (typeof zone[key] === 'undefined') throw new Error(`a facility zone is missing "${key}"`)
+    }
+  }
+  report.facility = {
+    floors: facilityModel.floors.length, sensors: facilityModel.sensors.length,
+    anomalies: facilityModel.anomalies.length, ticker: facilityModel.ticker.length,
+  }
+  report.steps.push({ step: 'GET facility → floors / zones / sensors / baseline / anomalies', ok: true, ...report.facility })
+
   const lifecycle = await call('method=graph&kind=lifecycle')
   if (lifecycle.body.ok !== true || lifecycle.body.model.kind !== 'lifecycle') throw new Error('the lifecycle model was refused')
   if (!Array.isArray(lifecycle.body.model.transitions)) throw new Error('the lifecycle model has no transitions')
@@ -311,7 +332,7 @@ try {
   report.steps.push({ step: 'ana_window → pending slot → takeOpen drained it once', ok: true })
   report.toolText = toolOpen.text.split('\n')[0]
 
-  const noUndefined = [config, status, frame, diagram, dashboard, graph, lifecycle, timeline, drained, empty]
+  const noUndefined = [config, status, frame, diagram, dashboard, graph, facility, lifecycle, timeline, drained, empty]
     .every((entry) => !JSON.stringify(entry.body).includes('undefined'))
   if (!noUndefined) throw new Error('a payload carried undefined through the lossless-JSON seam')
   report.steps.push({ step: 'every payload is lossless JSON', ok: true })

@@ -1,7 +1,7 @@
 {
   "name": "dsh-anagenesis",
-  "version": "0.2.1",
-  "description": "anagenesis —— DeepSeek Harness 上的可编程记忆编排层 + 自我进化引擎：自带闭环记忆存储（不依赖任何外部记忆插件）、17 个面向 Agent 的语义记忆工具（召回/提交/提升/降级/拆分/锁定/过期/反事实重思）、运行时可切换的注入策略、带审计与回滚的元策略自调节、全程可逆效应、自动注册 `anagenesis` Agent 预设，以及零依赖可视化层（终端仪表盘 + mermaid/d2/ascii 文本图表 + 可选桌面窗口）。",
+  "version": "0.3.0",
+  "description": "anagenesis —— DeepSeek Harness 上的可编程记忆编排层 + 自我进化引擎：自带闭环记忆存储（不依赖任何外部记忆插件）、20 个面向 Agent 的语义记忆工具（召回/提交/提升/降级/拆分/锁定/过期/反事实重思 + 可视化）、按项目隔离的记忆作用域、以预设为权限开关的档位体系、运行时可切换的注入策略、带审计与回滚的元策略自调节、全程可逆效应、自动注册 `anagenesis` Agent 预设，以及零依赖可视化层（终端仪表盘 + 文本图表 + 设施仪表盘窗口，同一个包）。",
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -16,6 +16,7 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
+    "./core": "./src/index.js",
     "./paths": "./src/paths.js",
     "./tools": "./src/tools/index.js",
     "./tools-gated": "./src/tools/gated.js",
@@ -31,21 +32,30 @@
     "./viz/model": "./src/viz/model.js",
     "./viz/tui": "./src/viz/tui.js",
     "./viz/diagram": "./src/viz/diagram.js",
+    "./viz/facility": "./src/viz/facility.js",
     "./viz/redact": "./src/viz/redact.js",
     "./viz/mirror": "./src/viz/mirror.js",
+    "./window": "./window/src/index.js",
+    "./client": "./window/client.js",
     "./package.json": "./package.json"
   },
   "files": [
     "src",
+    "window/src",
+    "window/client.js",
+    "window/client.d.ts",
+    "window/tools",
+    "window/README.md",
+    "window/README.en.md",
     "tools/viz-watch.mjs",
     "tools/migrate-store.mjs",
     "tools/scope-report.mjs",
+    "tools/preflight-publish.mjs",
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
     "LICENSE",
-    "CHANGELOG.md",
-    "tools/preflight-publish.mjs"
+    "CHANGELOG.md"
   ],
   "dsh": {
     "manifestVersion": 1,
@@ -53,6 +63,9 @@
     "kind": "server",
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "disclosure": {
@@ -68,7 +81,7 @@
     "retention": "local-only journal under $DSH_HOME/anagenesis; memory deletion is explicit via ana_forget/ana_expire and is itself journaled. Compaction appends archive segments and by default keeps every seq revertible; the optional retainEvents policy (default 0 = off) may prune whole archive segments, and any such loss is recorded in journal/pruned.json and reported by ana_audit view=status"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-tools": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.2.1-rc.2",
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependenciesMeta": {
@@ -81,17 +94,22 @@
   },
   "scripts": {
     "test": "node --import ./test/host-loader.mjs --test test/*.test.js",
-    "check": "node --check src/index.js && node --check src/paths.js && node --check src/scope/project.js && node --check src/scope/index.js && node --check src/permission/tiers.js && node --check src/permission/registry.js && node --check src/permission/guard.js && node --check src/permission/autonomy.js && node --check src/tools/index.js && node --check src/tools/gated.js && node --check src/tools/definitions.js && node --check src/preset/index.js && node --check src/preset/bind.js && node --check src/preset/persona.js && node --check src/preset/definition.js && node --check src/guard/index.js && node --check src/guard/invariants.js && node --check src/meta/reflect.js && node --check src/viz/index.js && node --check src/viz/model.js && node --check src/viz/lang.js && node --check src/viz/tui.js && node --check src/viz/diagram.js && node --check tools/viz-watch.mjs && node --check tools/asar-scan.mjs && node --check tools/migrate-store.mjs && node --check tools/preflight-publish.mjs && node --check tools/pack-gate.mjs && node --check tools/scope-report.mjs",
+    "check": "node --check src/index.js && node --check src/paths.js && node --check src/scope/project.js && node --check src/scope/index.js && node --check src/permission/tiers.js && node --check src/permission/registry.js && node --check src/permission/guard.js && node --check src/permission/autonomy.js && node --check src/tools/index.js && node --check src/tools/gated.js && node --check src/tools/definitions.js && node --check src/preset/index.js && node --check src/preset/bind.js && node --check src/preset/persona.js && node --check src/preset/definition.js && node --check src/guard/index.js && node --check src/guard/invariants.js && node --check src/meta/reflect.js && node --check src/viz/index.js && node --check src/viz/model.js && node --check src/viz/lang.js && node --check src/viz/tui.js && node --check src/viz/diagram.js && node --check src/viz/facility.js && node --check tools/viz-watch.mjs && node --check tools/asar-scan.mjs && node --check tools/migrate-store.mjs && node --check tools/preflight-publish.mjs && node --check tools/pack-gate.mjs && node --check tools/scope-report.mjs",
     "verify:boot": "node tools/verify-boot.mjs",
     "test:window": "node --import ./test/host-loader.mjs --test window/test/*.test.mjs",
-    "gate:window": "cd window && npm run gate",
+    "gate:window": "npm run build:client && npm run check:window && npm run test:window && npm run probe:window",
     "gate:pack": "node tools/pack-gate.mjs",
     "migrate:store": "node tools/migrate-store.mjs",
     "migrate:store:apply": "node tools/migrate-store.mjs --apply",
     "scan:asar": "node tools/asar-scan.mjs",
     "viz": "node tools/viz-watch.mjs --once",
     "viz:watch": "node tools/viz-watch.mjs --watch",
-    "preflight": "node tools/preflight-publish.mjs"
+    "preflight": "node tools/preflight-publish.mjs",
+    "build:client": "node window/tools/build-client.mjs",
+    "check:window": "node --check window/src/index.js && node --check window/src/host/viz.js && node --check window/src/host/rpc.js && node --check window/src/host/tool.js && node --check window/client.js && node --check window/tools/live-probe.mjs && node window/tools/build-client.mjs --check",
+    "probe:window": "node --import ./test/host-loader.mjs window/tools/live-probe.mjs",
+    "preview": "node window/tools/preview.mjs",
+    "test:ui": "node window/tools/live-ui-probe.mjs"
   },
   "license": "Apache-2.0",
   "repository": {

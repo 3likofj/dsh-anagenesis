@@ -12,6 +12,12 @@ PROJECT-STATE.md
 # 离线渲染预览：`node window/tools/preview.mjs` 的产物（HTML + 截图）
 window/.preview/
 
+# 取色用的参考缩略图（Kombai 采样用，已用完；只作本地留档）
+.preview-ref/
+
+# 来源不明的 Windows Cache 残渣（字面目录名 `%SystemDrive%`，早于 0.3.0，未被跟踪）
+%SystemDrive%/
+
 # 打包与编辑器
 dist/
 .DS_Store

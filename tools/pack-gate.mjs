@@ -1,18 +1,25 @@
 /**
  * 打包闸门 —— 回答「这个仓库真的能被装成 npm 包并解析吗」。
  *
- * 为什么需要它：`window/` 在仓库里与父包互为兄弟目录，`loadVizLayer()`
- * （`window/src/host/viz.js`）在 bare specifier 解析失败时会回退到
- * `../../../src/viz/*.js` —— 而 checkout 里那个相对路径**恰好存在**。于是父包
- * `exports` 少写一条（例如 `./viz/redact`）时，窗口侧的四道闸门会全绿，只有真装
- * 成 npm 包才会暴露：`loadVizLayer().resolvedBy` 会从 `package` 变成 `relative`。
- * 本闸门就是把那次人工验证固化下来。
+ * 为什么需要它：`window/src/host/viz.js` 在 bare specifier 解析失败时会回退到
+ * `../../../src/viz/*.js`，而 checkout 里那个相对路径**恰好存在**。于是 `exports`
+ * 少写一条（例如 `./viz/redact`）时，本机四道闸门全绿，只有真装成 npm 包才会暴露：
+ * `loadVizLayer().resolvedBy` 会从 `package` 变成 `relative`。本闸门就是把那次人工
+ * 验证固化下来。
  *
- * 它检查四件事：
+ * 0.3.0 起只有一个包（`dsh-anagenesis`），窗口是它的第六行 + `dsh.client` 半。
+ * 所以这里多守一条合并特有的不变量：**安装态里必须有 `window/client.js` 与
+ * `window/src/index.js`**，且 `exports['./client']` / `exports['./window']` 都能解析
+ * —— 有了它们，"一个包"才不是一句口号。
+ *
+ * 它检查六件事：
  *   1. `npm pack` 真实选择出来的文件清单：必需项在、开发残留不在；
- *   2. 两个包声明的**每个** exports 子路径都能从安装态解析；
- *   3. 装出来的窗口 Host 半 `loadVizLayer() -> resolvedBy === 'package'`，且 5 个子路径全部可用；
- *   4. 装出来的包对着一个空存储目录能给出正常回答（不碰真实存储）。
+ *   2. 包里声明的**每个** exports 子路径都能从安装态解析（清单直接读 manifest，
+ *      不另抄一份，抄一份就会漂移）；
+ *   3. 装出来的窗口 Host 半 `loadVizLayer() -> resolvedBy === 'package'`，6 个子路径全部可用；
+ *   4. 装出来的 client 半仍是经典脚本，且 ModuleLoader id = 包名；
+ *   5. 装出来的包对着一个空存储目录能给出正常回答（不碰真实存储）；
+ *   6. `cordis.patch.yml` 的六行里，裸包名只出现一次。
  *
  * ⚠️ 与仓库其余工具不同，本文件会 spawn `npm`。理由是无法不 spawn 就拿到
  * **npm 自己**的文件选择结果（这正是第 1 项要测的东西）；替身实现 npm 的
@@ -20,8 +27,9 @@
  * （`npm run gate:pack` 单独跑），也不在插件运行时被任何代码调用 ——
  * `package.json` 的 `subprocess: none` 说的是插件本体，不是开发脚本。
  *
- * 怎么让它红：删掉父包 `exports` 里任意一条 `./viz/*`（第 3 项红）；
- * 把 `src/viz/mirror.js` 从 `files` 里拿掉（第 1/2 项红）。
+ * 怎么让它红：删掉 `exports` 里任意一条 `./viz/*`（第 3 项红）；
+ * 把 `src/viz/facility.js` 从 `files` 里拿掉（第 1/2 项红）；
+ * 把 `window/client.js` 从 `files` 里拿掉（第 1/4 项红）。
  *
  *   node tools/pack-gate.mjs [--keep] [--json]
  * @module dsh-anagenesis/tools/pack-gate
@@ -43,7 +51,6 @@ const asJson = argv.includes('--json')
 const checks = []
 const check = (id, ok, detail) => checks.push({ id, ok: ok === true, detail: String(detail) })
 const temp = join(tmpdir(), `anagenesis-pack-gate-${process.pid}`)
-const LABEL = { parent: '父包', window: '窗口包' }
 
 /**
  * npm 的 pack 结果。唯一必须 spawn 的一步：要的就是 npm 自己的文件选择。
@@ -127,9 +134,8 @@ function readTarGz(file) {
  * @param {string} tarball
  * @param {string} dest
  * @param {string[]} expectedFiles npm 自报的清单，用作交叉校验
- * @param {string} label
  */
-function extractInto(tarball, dest, expectedFiles, label) {
+function extractInto(tarball, dest, expectedFiles) {
   const destRoot = resolve(dest)
   const stripped = readTarGz(tarball).map((entry) => ({
     path: entry.path.startsWith('package/') ? entry.path.slice('package/'.length) : entry.path,
@@ -138,7 +144,7 @@ function extractInto(tarball, dest, expectedFiles, label) {
   const names = stripped.map((entry) => entry.path).sort()
   const listed = [...expectedFiles].sort()
   const mismatch = names.length !== listed.length || names.some((name, index) => name !== listed[index])
-  check(`${label} tarball 内容与 npm 自报清单一致`, !mismatch,
+  check('tarball 内容与 npm 自报清单一致', !mismatch,
     mismatch ? `tarball ${names.length} 项 / npm 报 ${listed.length} 项` : `${names.length} 项`)
   for (const entry of stripped) {
     const target = resolve(destRoot, entry.path)
@@ -155,110 +161,114 @@ try {
   writeFileSync(join(consumer, 'package.json'),
     JSON.stringify({ name: 'anagenesis-pack-gate-consumer', private: true, type: 'module' }, null, 2))
 
-  // ── 1. 真打包 ─────────────────────────────────────────────────────────────
-  const packs = {}
-  for (const [label, cwd, name] of [
-    ['parent', ROOT, 'dsh-anagenesis'],
-    ['window', join(ROOT, 'window'), 'dsh-anagenesis-window'],
-  ]) {
-    const stdout = runNpm(['pack', '--json', '--pack-destination', join(temp, 'packs')], cwd)
-    const [info] = parsePackJson(stdout)
-    if (info === undefined || typeof info.filename !== 'string') throw new Error(`npm pack gave no filename for ${label}`)
-    packs[label] = {
-      name,
-      file: join(temp, 'packs', info.filename),
-      files: (info.files ?? []).map((row) => row.path),
-      version: info.version,
-    }
-    check(`${label} 打包成功（v${info.version}，${packs[label].files.length} 个文件）`, info.name === name, `${info.name} → ${info.filename}`)
+  // ── 1. 真打包（一个包） ───────────────────────────────────────────────────
+  const stdout = runNpm(['pack', '--json', '--pack-destination', join(temp, 'packs')], ROOT)
+  const [info] = parsePackJson(stdout)
+  if (info === undefined || typeof info.filename !== 'string') throw new Error('npm pack gave no filename')
+  const packed = {
+    name: info.name,
+    file: join(temp, 'packs', info.filename),
+    files: (info.files ?? []).map((row) => row.path),
+    version: info.version,
   }
+  check(`打包成功（${packed.name}@${packed.version}，${packed.files.length} 个文件）`,
+    packed.name === 'dsh-anagenesis', `${info.name} → ${info.filename}`)
 
   // ── 2. 内容闸门：必需项在、开发残留不在 ───────────────────────────────────
-  const REQUIRED = {
-    parent: ['package.json', 'README.md', 'README.en.md', 'LICENSE', 'CHANGELOG.md', 'cordis.patch.yml',
-      'src/index.js', 'src/paths.js', 'src/viz/model.js', 'src/viz/tui.js', 'src/viz/diagram.js',
-      'src/viz/redact.js', 'src/viz/mirror.js', 'tools/migrate-store.mjs', 'tools/viz-watch.mjs',
-      'tools/preflight-publish.mjs'],
-    window: ['package.json', 'README.md', 'README.en.md', 'client.js', 'client.d.ts', 'cordis.patch.yml',
-      'src/index.js', 'src/host/viz.js'],
-  }
-  const FORBIDDEN = {
-    parent: ['test/', 'window/', 'node_modules/', '.preview', 'HANDOFF.md', 'PROJECT-STATE.md', '.tgz', 'pack-gate.mjs'],
-    window: ['test/', 'node_modules/', '.preview', '.tgz', 'pack-gate.mjs'],
-  }
-  for (const label of ['parent', 'window']) {
-    const missing = REQUIRED[label].filter((file) => !packs[label].files.includes(file))
-    const leaked = packs[label].files.filter((file) => FORBIDDEN[label].some((bad) => file.includes(bad)))
-    check(`${label} tarball 必需文件齐全`, missing.length === 0, missing.join(', ') || `${REQUIRED[label].length} 项都在`)
-    check(`${label} tarball 没有开发残留`, leaked.length === 0, leaked.join(', ') || `无 ${FORBIDDEN[label].join(' / ')}`)
-  }
+  const REQUIRED = [
+    'package.json', 'README.md', 'README.en.md', 'LICENSE', 'CHANGELOG.md', 'cordis.patch.yml',
+    'src/index.js', 'src/paths.js', 'src/viz/model.js', 'src/viz/tui.js', 'src/viz/diagram.js',
+    'src/viz/redact.js', 'src/viz/mirror.js', 'src/viz/facility.js',
+    'tools/migrate-store.mjs', 'tools/viz-watch.mjs', 'tools/preflight-publish.mjs',
+    // 第六行与 client 半必须在安装态里 —— 这就是"两个包合一"的可验证形态。
+    'window/src/index.js', 'window/src/host/viz.js', 'window/src/host/rpc.js', 'window/src/host/tool.js',
+    'window/client.js', 'window/client.d.ts', 'window/README.md', 'window/README.en.md',
+  ]
+  const FORBIDDEN = ['test/', 'node_modules/', '.preview', 'HANDOFF.md', 'PROJECT-STATE.md', '.tgz',
+    'pack-gate.mjs', 'rename-backup', '%SystemDrive%', 'window/package.json', 'window/cordis.patch.yml']
+  const missing = REQUIRED.filter((file) => !packed.files.includes(file))
+  const leaked = packed.files.filter((file) => FORBIDDEN.some((bad) => file.includes(bad)))
+  check('tarball 必需文件齐全', missing.length === 0, missing.join(', ') || `${REQUIRED.length} 项都在`)
+  check('tarball 没有开发残留', leaked.length === 0, leaked.join(', ') || `无 ${FORBIDDEN.join(' / ')}`)
 
   // ── 3. 解出「安装态」 ─────────────────────────────────────────────────────
-  for (const label of ['parent', 'window']) {
-    const dest = join(consumer, 'node_modules', packs[label].name)
-    mkdirSync(dest, { recursive: true })
-    extractInto(packs[label].file, dest, packs[label].files, LABEL[label])
-    const manifest = JSON.parse(readFileSync(join(dest, 'package.json'), 'utf8'))
-    check(`${label} 解出来的 package.json 名/版本正确`,
-      manifest.name === packs[label].name && manifest.version === packs[label].version,
-      `${manifest.name}@${manifest.version}`)
-  }
+  const installed = join(consumer, 'node_modules', packed.name)
+  mkdirSync(installed, { recursive: true })
+  extractInto(packed.file, installed, packed.files)
+  const manifest = JSON.parse(readFileSync(join(installed, 'package.json'), 'utf8'))
+  check('解出来的 package.json 名/版本正确',
+    manifest.name === packed.name && manifest.version === packed.version,
+    `${manifest.name}@${manifest.version}`)
+  check("安装态的 dsh.client 仍在，且 ./client 指向 window/client.js",
+    manifest.dsh?.client?.platform === 'web' && String(manifest.exports?.['./client'] ?? '').includes('window/client.js'),
+    `dsh.client=${JSON.stringify(manifest.dsh?.client ?? null)} · ./client=${String(manifest.exports?.['./client'] ?? 'ABSENT')}`)
 
-  // ── 4. 每个声明的 exports 子路径都要能解析 ────────────────────────────────
+  // ── 4. 每个声明的 exports 子路径都要能解析（清单直接来自 manifest） ────────
   const requireFromConsumer = createRequire(join(consumer, 'package.json'))
-  const DECLARED = [
-    ['dsh-anagenesis', ['.', './paths', './tools', './guard', './preset', './preset-bind', './viz', './viz/model',
-      './viz/tui', './viz/diagram', './viz/redact', './viz/mirror', './package.json']],
-    ['dsh-anagenesis-window', ['.', './client', './package.json']],
-  ]
+  const subpaths = Object.keys(manifest.exports ?? {}).filter((key) => key !== './package.json')
   const unresolved = []
-  let declaredCount = 0
-  for (const [pkg, subpaths] of DECLARED) {
-    for (const subpath of subpaths) {
-      const specifier = subpath === '.' ? pkg : `${pkg}/${subpath.slice(2)}`
-      declaredCount += 1
-      try {
-        requireFromConsumer.resolve(specifier)
-      } catch (error) {
-        unresolved.push(`${specifier} → ${error instanceof Error ? error.message : String(error)}`)
-      }
+  for (const subpath of subpaths) {
+    const specifier = subpath === '.' ? manifest.name : `${manifest.name}/${subpath.slice(2)}`
+    try {
+      requireFromConsumer.resolve(specifier)
+    } catch (error) {
+      unresolved.push(`${specifier} → ${error instanceof Error ? error.message : String(error)}`)
     }
   }
   check('声明的每个 exports 子路径在安装态都能解析', unresolved.length === 0,
-    unresolved.length === 0 ? `${declaredCount} 条` : unresolved.join(' · '))
+    unresolved.length === 0 ? `${subpaths.length} 条` : unresolved.join(' · '))
+  const mustExport = ['./core', './window', './client', './viz/facility', './viz/model', './viz/mirror']
+  const absent = mustExport.filter((key) => manifest.exports?.[key] === undefined)
+  check('合并必需的四类 exports 都在（core / window / client / viz）', absent.length === 0,
+    absent.join(', ') || mustExport.join(', '))
 
-  // ── 5. loadVizLayer 必须走 package，且 5 个子路径全部可用 ─────────────────
+  // ── 5. loadVizLayer 必须走 package，且六个子路径全部可用 ───────────────────
   let hostViz = null
   let layer = null
   try {
-    hostViz = await import(pathToFileURL(join(consumer, 'node_modules', 'dsh-anagenesis-window', 'src', 'host', 'viz.js')).href)
+    hostViz = await import(pathToFileURL(join(installed, 'window', 'src', 'host', 'viz.js')).href)
     layer = await hostViz.loadVizLayer()
   } catch (error) {
     check('loadVizLayer 能把 viz 层解析出来', false,
-      `${error instanceof Error ? error.message : String(error)} —— bare specifier 与仓库内相对回退都没成功；对症查父包 exports 的 ./viz/* 与 files`)
+      `${error instanceof Error ? error.message : String(error)} —— bare specifier 与包内相对回退都没成功；对症查 exports 的 ./viz/* 与 files`)
   }
   if (layer !== null) {
-    const members = ['DASHBOARD_SECTIONS', 'DIAGRAM_KINDS', 'buildDashboardModel', 'buildDiagramModel', 'renderFrame',
-      'DIAGRAM_FORMATS', 'renderDiagram', 'REDACTION_LEVELS', 'DEFAULT_REDACTION', 'looksLikeStore', 'readStoreMirror']
+    const members = ['DASHBOARD_SECTIONS', 'DIAGRAM_KINDS', 'buildDashboardModel', 'buildDiagramModel', 'buildFacilityModel',
+      'FACILITY_VERSION', 'renderFrame', 'DIAGRAM_FORMATS', 'renderDiagram', 'REDACTION_LEVELS', 'DEFAULT_REDACTION',
+      'looksLikeStore', 'readStoreMirror']
     const missingMembers = members.filter((key) => layer[key] === undefined)
     check("loadVizLayer 走安装形态（resolvedBy === 'package'）", layer.resolvedBy === 'package',
       layer.resolvedBy === 'package'
         ? 'resolvedBy=package'
-        : `resolvedBy=${layer.resolvedBy} —— bare specifier 解析失败时它会回退到仓库内相对路径，exports 缺项正是这种形状`)
-    check('loadVizLayer 的 5 个子路径全部解析出函数/常量', missingMembers.length === 0,
-      missingMembers.join(', ') || `parts=5 members=${members.length}`)
+        : `resolvedBy=${layer.resolvedBy} —— bare specifier 解析失败时会回退到包内相对路径，exports 缺项正是这种形状`)
+    check('loadVizLayer 的 6 个子路径全部解析出函数/常量', missingMembers.length === 0,
+      missingMembers.join(', ') || `parts=6 members=${members.length}`)
   }
 
-  // ── 6. 装出来的包对着空存储要给出正常回答（绝不碰真实存储） ───────────────
+  // ── 6. 装出来的 client 半仍是经典脚本，且 id 就是包名 ─────────────────────
+  const clientSource = existsSync(join(installed, 'window', 'client.js'))
+    ? readFileSync(join(installed, 'window', 'client.js'), 'utf8')
+    : ''
+  check('安装态的 client.js 以 ModuleLoader.load 开头，且 id 等于包名',
+    clientSource.startsWith('/*') && clientSource.includes("window.__ModuleLoader__.load({")
+    && clientSource.includes("id: 'dsh-anagenesis'"),
+    clientSource === '' ? 'window/client.js 不在 tarball 里' : `bytes=${clientSource.length}`)
+
+  // ── 7. 装出来的包对着空存储要给出正常回答（绝不碰真实存储） ───────────────
   if (hostViz === null || layer === null) {
     check('装出来的包对着空存储给出正常回答', false, 'loadVizLayer 没解析成功，无法构造 renderer（先修上面那条）')
   } else {
     const emptyRoot = join(temp, 'empty-store')
     mkdirSync(emptyRoot, { recursive: true })
-    const status = await hostViz.createRenderer({ rootDir: emptyRoot }).status()
+    const renderer = hostViz.createRenderer({ rootDir: emptyRoot })
+    const status = await renderer.status()
     check('空存储目录得到的是正常回答，不是抛错', status?.ok === true && status?.storeFound === false,
       `ok=${status?.ok} storeFound=${status?.storeFound} root=${status?.root}`)
     check('空存储回答里的 root 就是我们给的那个目录', resolve(String(status?.root ?? '')) === resolve(emptyRoot), String(status?.root))
+    const facility = await renderer.facility({})
+    check('安装态的 facility 方法给出空模型而不是抛错',
+      facility?.ok === true && facility?.model?.kind === 'facility' && Array.isArray(facility.model.floors),
+      `ok=${facility?.ok} kind=${facility?.model?.kind} floors=${facility?.model?.floors?.length}`)
   }
 } catch (error) {
   check('gate 自身跑完', false, error instanceof Error ? error.message : String(error))

@@ -20,7 +20,7 @@
  * fails if it is stale with respect to these parts.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-anagenesis-window',
+  id: 'dsh-anagenesis',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports

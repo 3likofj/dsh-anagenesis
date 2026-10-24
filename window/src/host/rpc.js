@@ -21,14 +21,14 @@
  *     privilege an entry click could escalate to. The only mutation anywhere in
  *     this package is the in-memory pending-open slot that `ana_window` fills and
  *     the window drains — it touches no file and no other plugin's state.
- * @module dsh-anagenesis-window/host/rpc
+ * @module dsh-anagenesis/host/rpc
  */
 
 /** The single route prefix this package owns. */
-export const ROUTE_PATH = '/anagenesis-window/api'
+export const ROUTE_PATH = '/anagenesis/api'
 
 /** Methods servable over the route. `takeOpen` is the only one that mutates. */
-export const RPC_METHODS = Object.freeze(['ping', 'config', 'status', 'dashboard', 'graph', 'frame', 'diagram', 'takeOpen'])
+export const RPC_METHODS = Object.freeze(['ping', 'config', 'status', 'facility', 'dashboard', 'graph', 'frame', 'diagram', 'takeOpen'])
 
 /** @param {string | string[] | undefined} value @returns {string | undefined} */
 function header(value) {
@@ -149,7 +149,7 @@ async function serve(method, query, deps) {
     case 'ping':
       return {
         ok: true,
-        package: 'dsh-anagenesis-window',
+        package: 'dsh-anagenesis',
         api: 1,
         methods: RPC_METHODS,
         now: Date.now(),
@@ -175,6 +175,15 @@ async function serve(method, query, deps) {
     case 'status':
       return { ...(await renderer.status()), pendingOpen: pending.take({ peek: true }) }
     // 结构化模型：窗口自己渲染。文本版本（frame/diagram）留给工具与终端视图。
+    // `facility` 是运维仪表盘（楼层 / 分区 / 传感器 / 告警 / 电文），`dashboard` 是
+    // 存储整体体检：两者同源同脱敏，粒度不同。
+    case 'facility':
+      return renderer.facility({
+        sensors: query.sensors,
+        events: query.events,
+        floors: query.floors,
+        redaction: query.redaction,
+      })
     case 'dashboard':
       return renderer.dashboard({
         width: query.width,

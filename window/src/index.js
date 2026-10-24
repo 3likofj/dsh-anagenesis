@@ -1,25 +1,26 @@
 /**
- * dsh-anagenesis-window — the Host half.
+ * dsh-anagenesis/window — the window's Host half (sixth row of the same package).
  *
  * One Loader row, and the row is *only* this: a read-only projection of the
  * anagenesis store over one HTTP route, plus the `ana_window` tool. The window
- * itself, its chrome and its four entrance seats live in the client half
- * (`./client.js`), because only the browser half can register a slot, a native
+ * itself, its chrome and its entrance seats live in the client half
+ * (`../client.js`), because only the browser half can register a slot, a native
  * right-Sidebar tab type or a `dsh-better-sidebar` tab.
  *
- * Why this is a separate package from `dsh-anagenesis` (and must stay one):
- * `dsh-client-modules` allows a package that declares `dsh.client` exactly ONE
- * active Loader row, and `dsh-anagenesis` is five rows that the `anagenesis` preset
- * mounts a second time. Adding `dsh.client` there cannot boot — that failure mode
- * was hit and reverted once already (HANDOFF §10.14). So the window is a
- * single-row sibling, and the preset is *aware* of it without mounting it.
+ * This used to be a separate package (`dsh-anagenesis-window`) because
+ * `dsh-client-modules` was believed to allow a `dsh.client` package exactly ONE
+ * active Loader row. The precise rule (read off `reconcilePackage` /
+ * `exactPackageSpecifier` in 0.2.1-rc.2) is one active source per *package name*,
+ * and a subpath specifier is not a source at all — so the client half moved into
+ * this package and every row except `anagenesis-core` uses a subpath
+ * (HANDOFF §25.3). The preset is *aware* of the window without mounting it.
  *
  * Failure isolation: nothing here is required by the memory layer. A missing
  * webserver, a missing tools service, a missing/broken sibling package or an
  * absent store all degrade to a logged observation plus an answer that says so —
  * this module never throws into the Loader and never touches another plugin's
  * state or storage.
- * @module dsh-anagenesis-window
+ * @module dsh-anagenesis/window
  */
 
 import Schema from '@deepseek-ai/schemastery'

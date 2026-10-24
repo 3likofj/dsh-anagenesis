@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # dsh-anagenesis bundle patch — inserted when this package is in
-# `dsh.profile.bundles`. Five rows, each independently disableable:
+# `dsh.profile.bundles`. Six rows, each independently disableable:
 #
 #   anagenesis-core     the service: store + strategy registry + engine + tuner.
 #                      Publishes `ctx.anagenesis`. No DSH tool/agent surface.
@@ -16,6 +16,18 @@
 #   anagenesis-viz      the read-only visualization row: `ana_dashboard` (TUI
 #                      frame) + `ana_diagram` (mermaid/d2/ascii). No service, no
 #                      timers, no writes unless auditRenders is turned on.
+#   anagenesis-window   the desktop window: one HTTP route (`/anagenesis/api`),
+#                      one agent tool (`ana_window`), and the `dsh.client` half
+#                      that draws it. Same package, sixth row.
+#
+# ONE PACKAGE, SIX ROWS — and exactly ONE row may use the bare package name.
+# `@deepseek-ai/dsh-client-modules` resolves a client source per Loader row and
+# refuses two active sources for the same *package name*
+# (`reconcilePackage` → `exactPackageSpecifier`): a subpath specifier such as
+# `dsh-anagenesis/tools` is not a client source at all, so `dsh.client` can live
+# here while the other five rows stay independently disableable. The `anagenesis`
+# preset mounts `dsh-anagenesis/core` (subpath!) for the same reason — mounting
+# the bare name a second time would be the second source that breaks the boot.
 #
 # NOT in this bundle, on purpose: `dsh-anagenesis/tools-gated`. The write-tier
 # tools (ana_remember, ana_promote, ana_demote, ana_lock, ana_expire, ana_split,
@@ -86,3 +98,30 @@
         # appends one `viz.render` audit row (audit rows are history and are not
         # compensable — see HANDOFF §16/D3).
         auditRenders: false
+
+    - id: anagenesis-window
+      name: dsh-anagenesis/window
+      config:
+        # Leave empty to use $DSH_HOME/anagenesis — the same store the core row
+        # writes. The window only ever READS it (mirror replay, no writer handle).
+        rootDir: ''
+        title: anagenesis · 可视化
+        # Same policy vocabulary as `ana_dashboard` / `ana_diagram`. 'secrets'
+        # scrubs credential-shaped text and omits bodies before anything reaches
+        # the renderer, so the window can never show more than the tools do.
+        redaction: secrets
+        color: never
+        width: 96
+        events: 8
+        salience: 5
+        diagramNodes: 40
+        includeBodies: false
+        refreshMs: 2000
+        # Which of the entrance seats to arm. 'auto' = with DSH-better-sidebar
+        # installed the official right-sidebar seat steps aside (better-sidebar
+        # owns that same column); without it the seat is the one official entrance.
+        officialEntry: auto
+        # The agent-reachable door (`ana_window`). Registered by this row only;
+        # the `anagenesis` preset does not mount this row, so a preset session
+        # gets the tool if and only if the profile enabled this row.
+        exposeWindowTool: true
