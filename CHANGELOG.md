@@ -3,6 +3,22 @@
 本文件记录每次发布的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.2] — 2026-10-25
+
+> 修 0.3.1 的一个**功能未生效**缺陷：版本检查跑起来了，但结果到不了界面。
+
+### 修复
+
+- **窗口里的版本更新块永远是"没检查过"**。`window/src/host/viz.js` 的 `readUpdate()`
+  写在模块作用域，却引用了 `createRenderer` 闭包里的 `updateProvider` —— 引用不存在，
+  它自己的 `try/catch` 把这个 `ReferenceError` 吞成 `null`，于是**无论服务报什么**，
+  facility 与 dashboard 都显示 `check disabled / never`。核心层的检查本身是好的
+  （`ana_audit view=status` 能读到），坏的是最后一公里。
+  修法：`readUpdate(provider)` 显式收参数，四个调用点各自传入。
+- 补上**接线**测试（`window/test/host.test.mjs`）：`createRenderer({ update })` → 模型里
+  必须出现 `available/latest`，且文本帧**不**带这个分区。0.3.1 的单测全绿是因为它们
+  测的是投影（模型 → 渲染），没测"provider → 模型"这一段 —— 测函数 ≠ 测接线。
+
 ## [0.3.1] — 2026-10-25
 
 > 一块牌子：**有新版本了**。

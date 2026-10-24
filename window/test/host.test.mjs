@@ -269,6 +269,44 @@ test('host: the viz layer resolves through one of the two documented paths', asy
   assert.ok(Array.isArray(layer.DIAGRAM_KINDS) && layer.DIAGRAM_KINDS.includes('memory-graph'))
 })
 
+test('host: the version provider reaches the models (wiring, not just the projection)', async () => {
+  // 这一条是**接线**测试，不是投影测试：`buildFacilityModel`/`buildDashboardModel` 的
+  // update 块早就有单测，但 `createRenderer({ update })` 到模型之间那一段曾经断过 ——
+  // 模块作用域的读函数看不到闭包里的 provider，自己的 try/catch 把它吞成 null，
+  // 于是界面永远显示"没检查过"，而所有单测全绿。
+  const root = await makeStore()
+  try {
+    const status = {
+      kind: 'update', version: 1, mode: 'npm', enabled: true, package: 'dsh-anagenesis',
+      registry: 'https://registry.npmjs.org', current: '0.3.1', latest: '0.4.0',
+      available: true, checked: true, checkedAt: 1_700_000_000_000, error: '', nextCheckAt: 0,
+    }
+    let calls = 0
+    const renderer = createRenderer({ rootDir: root, cacheMs: 0, update: () => { calls += 1; return status } })
+
+    const facility = await renderer.facility({})
+    assert.equal(calls > 0, true, 'the renderer asks the provider')
+    assert.equal(facility.model.building.update.available, true, 'the facility model carries it')
+    assert.equal(facility.model.building.update.latest, '0.4.0')
+    assert.equal(facility.model.anomalies.some((item) => item.code === 'update-available'), true)
+
+    const dashboard = await renderer.dashboard({})
+    const section = dashboard.model.sections.find((item) => item.id === 'update')
+    assert.ok(section !== undefined, 'the structured dashboard always carries the update section')
+    assert.equal(section.rows.find((row) => row.label === 'latest version').value, '0.4.0')
+
+    // 文本帧**不**加这个分区：它必须与 `ana_dashboard` 逐字节相同（live-probe 守着）。
+    const frame = await renderer.frame({ width: 96 })
+    assert.equal(frame.text.includes('0.4.0'), false, 'the text frame stays byte-identical to the tool: no update rows')
+
+    // 没有 provider（只读部署 / 独立预览）：形状仍在，值说"没检查过"，不编。
+    const bare = await createRenderer({ rootDir: root, cacheMs: 0 }).facility({})
+    assert.deepEqual(bare.model.building.update, { enabled: false, mode: 'off', current: '', latest: '', available: false, checkedAt: 0, error: '' })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('host: a missing store is an ANSWER, not an error', async () => {
   const renderer = createRenderer({ rootDir: join(tmpdir(), 'ana-window-does-not-exist-' + Date.now()) })
   const frame = await renderer.frame({})

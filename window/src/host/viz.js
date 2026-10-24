@@ -171,12 +171,17 @@ export function clamp(value, min, max, fallback) {
  * 版本更新状态。窗口**不自己上网**：它问核心服务（`service.updateStatus()`），
  * 而服务是否联网由核心行的 `updateCheck` 决定。没有服务（只读镜像、独立预览、
  * 老部署）时返回 `null`，模型如实说"没检查过"。
+ *
+ * `provider` 必须由调用方显式传进来：这个函数在模块作用域，看不到
+ * `createRenderer` 里的闭包 —— 第一版就栽在这里（引用不存在的变量 → 自己的
+ * try/catch 把它吞成 `null`，界面永远显示"没检查过"）。
+ * @param {(() => any) | null} provider
  * @returns {any}
  */
-function readUpdate() {
-  if (typeof updateProvider !== 'function') return null
+function readUpdate(provider) {
+  if (typeof provider !== 'function') return null
   try {
-    return updateProvider()
+    return provider()
   } catch {
     return null
   }
@@ -417,7 +422,7 @@ export function createRenderer(options = {}) {
           const root = rootDir()
           if (!layer.looksLikeStore(root)) return { ok: true, empty: true, storeFound: false, root, model: emptyDashboardModel(layer, root) }
           const mirror = await layer.readStoreMirror(root)
-          const model = layer.buildDashboardModel({ ...mirror, update: readUpdate() }, {
+          const model = layer.buildDashboardModel({ ...mirror, update: readUpdate(updateProvider) }, {
             // 窗口的结构化模型**总是**多要一个 `update` 分区（这一屏最上面那行提示的来源）。
             // 文本帧（`frame`）不加：那一份必须与 ana_dashboard 逐字节相同。
             sections: sections === null ? [...layer.DASHBOARD_SECTIONS, 'update'] : sections,
@@ -457,21 +462,21 @@ export function createRenderer(options = {}) {
       const sensors = clamp(request.sensors, 1, 200, Math.max(cfg.salience * 4, 16))
       const events = clamp(request.events, 1, 200, cfg.events)
       const floors = clamp(request.floors, 1, 20, 6)
-      const key = `facility:${rootDir()}:${redaction}:${sensors}:${events}:${floors}:${cfg.includeBodies}:${readUpdate()?.latest ?? ''}`
+      const key = `facility:${rootDir()}:${redaction}:${sensors}:${events}:${floors}:${cfg.includeBodies}:${readUpdate(updateProvider)?.latest ?? ''}`
       try {
         const value = await cached(key, async () => {
           const root = rootDir()
           if (!layer.looksLikeStore(root)) {
             return {
               ok: true, empty: true, storeFound: false, root,
-              model: layer.buildFacilityModel({ state: { schemaVersion: 0, version: 0, memories: {}, projects: {}, stacks: {} }, events: [], origin: 'mirror', update: readUpdate() }, {
+              model: layer.buildFacilityModel({ state: { schemaVersion: 0, version: 0, memories: {}, projects: {}, stacks: {} }, events: [], origin: 'mirror', update: readUpdate(updateProvider) }, {
                 now: now(), redaction, includeBody: cfg.includeBodies,
                 limit: { sensors, events, floors },
               }),
             }
           }
           const mirror = await layer.readStoreMirror(root)
-          const model = layer.buildFacilityModel({ ...mirror, update: readUpdate() }, {
+          const model = layer.buildFacilityModel({ ...mirror, update: readUpdate(updateProvider) }, {
             now: now(),
             redaction,
             includeBody: cfg.includeBodies,
