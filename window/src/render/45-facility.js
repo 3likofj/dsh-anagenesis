@@ -18,6 +18,24 @@
  * 这里不出现裸字符串插值，一切走 `esc()`。
  */
 
+/**
+ * 顶条上的更新牌。
+ *
+ * 它是**唯一**会催人动手的元素，所以只在真的查到新版本时出现；检查关闭、没查过、
+ * 查失败都不在顶条上占位置（那些是 dashboard 面「版本更新」分区里的一行字）。
+ * 它不可点击：升级是人的决定 —— 这个窗口不下载、不安装、不重启。
+ * @param {any} model
+ * @returns {string}
+ */
+function updatePill(model) {
+  const update = model?.building?.update ?? {}
+  if (update.available !== true) return ''
+  const latest = String(update.latest ?? '')
+  if (latest === '') return ''
+  const hint = 'npm 上已有 v' + latest + '：重新装一次这个包即可升级。窗口不会自动更新，也不会自己重启。'
+  return '<span class="gx-pill gx-pill--new" title="' + esc(hint) + '">v' + esc(latest) + ' 可更新</span>'
+}
+
 /** 状态 → 传感器颜色（沿用主题的语义色名，不另造一套）。 */
 const GX_STATE_TONE = Object.freeze({
   draft: 'warn',
@@ -51,6 +69,7 @@ function gxAnomalyText(item) {
   if (code === 'read-only') return { title: '只读档位', detail: '没有生效的预设许可，模型看不到写入工具' }
   if (code === 'unredacted') return { title: '脱敏已关闭', detail: '这一屏可能包含凭据 —— 不要截图或外传' }
   if (code === 'empty') return { title: '还没有记忆', detail: '存储是健康的，只是空的 —— 第一笔写入会造出第一层楼' }
+  if (code === 'update-available') return { title: '有新版本 v' + esc(String(item?.ref ?? '')), detail: '重新装一次这个包就升级完成（窗口不会自己安装，也不会自己重启）' }
   return { title: String(item?.title ?? code), detail: String(item?.detail ?? '') }
 }
 
@@ -158,6 +177,7 @@ function gxTopBar(model, view) {
     + '<div class="gx-topmeta">' + cells
     + (alerts > 0 ? '<span class="gx-pill gx-pill--bad" title="有需要立刻处理的事项">' + alerts + ' ALERT</span>' : '<span class="gx-pill gx-pill--ok" title="没有需要立刻处理的事项">CLEAR</span>')
     + '<span class="gx-pill' + (mirror ? ' gx-pill--warn' : ' gx-pill--ok') + '" title="只读镜像：不持有写锁，也不会写一个字节">' + (mirror ? 'MIRROR' : 'SERVICE') + '</span>'
+    + updatePill(model)
     + '<span class="gx-clock" title="模型生成时间">' + esc(gxClock(model?.generatedAt)) + '</span>'
     + '</div></header>'
 }

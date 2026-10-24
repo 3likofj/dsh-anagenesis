@@ -178,7 +178,7 @@ try {
   const REQUIRED = [
     'package.json', 'README.md', 'README.en.md', 'LICENSE', 'CHANGELOG.md', 'cordis.patch.yml',
     'src/index.js', 'src/paths.js', 'src/viz/model.js', 'src/viz/tui.js', 'src/viz/diagram.js',
-    'src/viz/redact.js', 'src/viz/mirror.js', 'src/viz/facility.js',
+    'src/viz/redact.js', 'src/viz/mirror.js', 'src/viz/facility.js', 'src/update/check.js',
     'tools/migrate-store.mjs', 'tools/viz-watch.mjs', 'tools/preflight-publish.mjs',
     // 第六行与 client 半必须在安装态里 —— 这就是"两个包合一"的可验证形态。
     'window/src/index.js', 'window/src/host/viz.js', 'window/src/host/rpc.js', 'window/src/host/tool.js',

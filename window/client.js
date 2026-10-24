@@ -135,6 +135,7 @@ const SECTION_ZH = Object.freeze({
   journal: '日志尾部',
   salience: '重要度排行',
   viz: '渲染器状态',
+  update: '版本更新',
 })
 
 /** 分区副标题：一句话说明这一块在回答什么问题。 */
@@ -148,6 +149,7 @@ const SECTION_HINT_ZH = Object.freeze({
   journal: '最近发生的操作，倒序',
   salience: '按重要度排序的记忆，含类型与状态',
   viz: '这个渲染器自己的运转情况',
+  update: '这个插件自己的版本，以及 npm 上有没有新版本',
 })
 
 /** 图的三种形态。 */
@@ -852,6 +854,8 @@ font-size:9.5px;font-weight:700;letter-spacing:.12em;border:1px solid currentCol
 .gx-pill--bad{color:#FF7062;background:rgba(216,48,36,.2)}
 .gx-pill--warn{color:#F5CE63;background:rgba(240,192,48,.14)}
 .gx-pill--ok{color:#7FD6A2;background:rgba(44,122,75,.18)}
+/* 有新版本：信号黄底黑字 —— 顶条上唯一催人看一眼的东西。 */
+.gx-pill--new{color:var(--gx-ink);background:var(--gx-yellow);border-color:var(--gx-yellow);font-weight:700}
 .gx-clock{font-family:var(--gx-mono);font-size:11px;font-variant-numeric:tabular-nums;color:#C9D0DC;flex:0 0 auto}
 
 /* 主体：左侧图标栏 / 中央平面图 / 右侧分区详情 */
@@ -1240,6 +1244,11 @@ const DASH_LABEL_ZH = Object.freeze({
   'default write tier': '默认写入档位',
   gear: '权限档位',
   'legacy untagged': '未标注的旧记忆',
+  // 版本更新分区（0.3.1）：标签是模型给的英文，窗口必须认得出它们。
+  'current version': '当前版本',
+  'latest version': '最新版本',
+  update: '更新',
+  'last checked': '上次检查',
 })
 
 /** 通用短语替换：嵌在自由文本里的固定说法。 */
@@ -1260,6 +1269,12 @@ const PHRASE_ZH = Object.freeze([
   ['default', '默认'],
   ['ago', '前'],
   ['mode', '模式'],
+  // 版本更新分区的状态值（0.3.1）。这些是**值**不是标签，所以走短语表。
+  ['check disabled (offline)', '检查已关闭（离线）'],
+  ['not checked yet', '还没有检查过'],
+  ['check failed: ', '检查失败：'],
+  [' is available', ' 可更新'],
+  ['up to date', '已是最新'],
 ])
 
 /** @param {unknown} value @returns {string} */
@@ -1784,6 +1799,24 @@ function dashboardLegendHtml() {
  * 这里不出现裸字符串插值，一切走 `esc()`。
  */
 
+/**
+ * 顶条上的更新牌。
+ *
+ * 它是**唯一**会催人动手的元素，所以只在真的查到新版本时出现；检查关闭、没查过、
+ * 查失败都不在顶条上占位置（那些是 dashboard 面「版本更新」分区里的一行字）。
+ * 它不可点击：升级是人的决定 —— 这个窗口不下载、不安装、不重启。
+ * @param {any} model
+ * @returns {string}
+ */
+function updatePill(model) {
+  const update = model?.building?.update ?? {}
+  if (update.available !== true) return ''
+  const latest = String(update.latest ?? '')
+  if (latest === '') return ''
+  const hint = 'npm 上已有 v' + latest + '：重新装一次这个包即可升级。窗口不会自动更新，也不会自己重启。'
+  return '<span class="gx-pill gx-pill--new" title="' + esc(hint) + '">v' + esc(latest) + ' 可更新</span>'
+}
+
 /** 状态 → 传感器颜色（沿用主题的语义色名，不另造一套）。 */
 const GX_STATE_TONE = Object.freeze({
   draft: 'warn',
@@ -1817,6 +1850,7 @@ function gxAnomalyText(item) {
   if (code === 'read-only') return { title: '只读档位', detail: '没有生效的预设许可，模型看不到写入工具' }
   if (code === 'unredacted') return { title: '脱敏已关闭', detail: '这一屏可能包含凭据 —— 不要截图或外传' }
   if (code === 'empty') return { title: '还没有记忆', detail: '存储是健康的，只是空的 —— 第一笔写入会造出第一层楼' }
+  if (code === 'update-available') return { title: '有新版本 v' + esc(String(item?.ref ?? '')), detail: '重新装一次这个包就升级完成（窗口不会自己安装，也不会自己重启）' }
   return { title: String(item?.title ?? code), detail: String(item?.detail ?? '') }
 }
 
@@ -1924,6 +1958,7 @@ function gxTopBar(model, view) {
     + '<div class="gx-topmeta">' + cells
     + (alerts > 0 ? '<span class="gx-pill gx-pill--bad" title="有需要立刻处理的事项">' + alerts + ' ALERT</span>' : '<span class="gx-pill gx-pill--ok" title="没有需要立刻处理的事项">CLEAR</span>')
     + '<span class="gx-pill' + (mirror ? ' gx-pill--warn' : ' gx-pill--ok') + '" title="只读镜像：不持有写锁，也不会写一个字节">' + (mirror ? 'MIRROR' : 'SERVICE') + '</span>'
+    + updatePill(model)
     + '<span class="gx-clock" title="模型生成时间">' + esc(gxClock(model?.generatedAt)) + '</span>'
     + '</div></header>'
 }

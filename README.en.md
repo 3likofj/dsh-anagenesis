@@ -145,7 +145,7 @@ the model cannot see them.
 | What a change costs | Usually irreversible | **Every transaction returns an inverse**; inverses are journalled next to the forward patch, so **reverts survive a restart** |
 | Self-tuning | None | **The meta layer tunes itself from feedback**: parameter envelope + UCB1 + audit + evaluation + rollback |
 | Blast radius | — | **Monotonic guard + circuit breaker + `safeMode`**; only tier-1 is self-modifiable, the outer ring is frozen |
-| Dependencies | Often an external service or vector DB | **Zero runtime dependencies, offline, no subprocess, no network** |
+| Dependencies | Often an external service or vector DB | **Zero runtime dependencies, offline, no subprocess**; the only network request is an **opt-in** update check (one GET, one line to turn off) |
 | Visibility | A black box | TUI dashboard + mermaid/d2/ascii diagrams + an optional desktop window |
 
 ## Install
@@ -259,6 +259,9 @@ boundary is **enforced** (8 monotonic invariants plus the `safeMode` freeze), no
   energy vs the measured building baseline); the anomaly desk lists contradicting links, expiring soon,
   loud-but-stale, dangling links, locked, safe mode, redaction off and the read-only tier; the bottom wire is
   the real journal tail. No number reaches the screen that the model does not contain.
+- **New-version notice** (0.3.1): the facility top bar shows a `v0.4.0 可更新` pill and the anomaly desk gets a row; the
+  dashboard face gains an "update" section; `ana_audit view=status` reports current / latest / last check. It only
+  **tells you** — it never downloads, installs or restarts anything.
 - **Desktop window** (sixth row of the same package): three faces — facility, dashboard, graph — sharing one
   set of pure functions that emit Chinese cards and a hand-rolled inline-SVG directed graph (LR/TB plus zoom),
   with three entrance seats (better-sidebar row / official right sidebar / conversation header), reading the
@@ -280,7 +283,8 @@ $DSH_HOME/anagenesis/
   `project:<fingerprint>` and `session:<id>` events live in segments named after them, while global
   memory keeps the unprefixed `journal-*.jsonl`.
 
-- **Entirely local**: no network, no model download, no model calls, no subprocesses.
+- **Entirely local**: no model download, no model calls, no subprocesses; the only network request is the optional update check
+  (`updateCheck: npm` in the shipped bundle, `off` in code — with `off` nothing leaves the machine at all).
 - **Zero runtime dependencies**: retrieval is a built-in BM25 inverted index plus a deterministic hashing embedder (192 dimensions). A real semantic backend can be injected at runtime.
 - **Redaction on by default**: tool and window output defaults to `secrets` — credential-shaped text is scrubbed and bodies are omitted. `strict` masks labels too; `none` is an explicit local-debug escape hatch, and the artifact warns about it.
 - **Legacy directory compatibility**: the default is `$DSH_HOME/anagenesis`; if the pre-rename `$DSH_HOME/evolution` holds more data, the plugin keeps using it and says so in the log, moving not a single byte. To move it, run `npm run migrate:store` (copy + per-file sha256 verification; the source is untouched).
@@ -300,6 +304,9 @@ Key knobs on the kernel row:
 | `retainEvents` | `0` | The single lossy policy: keep only archives newer than N events; `0` = keep everything |
 | `embedProvider` | `hash` | Vector backend to open with; a semantic backend can be installed at runtime |
 | `reflectionEnabled` | `true` | Periodic reflection: question established beliefs whose evidence has visibly decayed (filed as draft hypotheses only) |
+| `updateCheck` | `off` in code, `npm` in the bundle | New-version check: `off` = fully offline; `npm` = every 6h read this package's `latest` from npm (read-only GET, no identifiers, never installs) |
+| `updateCheckIntervalMs` | `21600000` | Check interval (also the cache TTL) |
+| `updateRegistry` | `https://registry.npmjs.org` | Point this at a mirror; used only when `updateCheck: npm` |
 
 Also: `exposeAuditTool` / `exposeTuneTool` on the tools row; `lang` / `redaction` / `width` /
 `auditRenders` and friends on the visualization row; see `window/README.md` for the window package.

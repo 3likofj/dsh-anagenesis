@@ -152,8 +152,15 @@ export function apply(ctx, config = {}) {
   }
 
   const pending = createPendingChannel()
+  // 版本状态的唯一所有者是核心服务；窗口只**问**，不自己上网。
+  // 服务不在（只读部署、核心行被禁用）时保持 null，模型会说"没检查过"。
+  /** @type {any} */
+  let anagenesisService = null
   const renderer = createRenderer({
     rootDir: resolved.rootDir,
+    update: () => (anagenesisService !== null && typeof anagenesisService.updateStatus === 'function'
+      ? anagenesisService.updateStatus()
+      : null),
     redaction: resolved.redaction,
     color: resolved.color,
     width: resolved.width,
@@ -168,6 +175,18 @@ export function apply(ctx, config = {}) {
 
   log?.info?.(`anagenesis-window: root=${resolved.rootDir !== '' ? resolved.rootDir : defaultRoot()} `
     + `officialEntry=${resolved.officialEntry} tool=${resolved.exposeWindowTool}`)
+
+  // ── the version provider ───────────────────────────────────────────────────
+  // 只持有引用，不创建服务：核心行在不在、什么时候上线，由组合决定。
+  ctx.effect(
+    () => ctx.inject(['anagenesis'], (injected) => {
+      const svc = injected.get('anagenesis', false)
+      anagenesisService = svc === undefined || svc === null ? null : svc
+      log?.info?.(`anagenesis-window: version provider attached (service.updateStatus ${typeof svc?.updateStatus === 'function' ? 'available' : 'missing — older core row'})`)
+      return once(() => { anagenesisService = null }, onError)
+    }),
+    'anagenesis-window: version provider',
+  )
 
   // ── the read-only route ────────────────────────────────────────────────────
   // Reactive by construction: registered when a webserver exists, released when

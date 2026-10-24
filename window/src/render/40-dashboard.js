@@ -43,6 +43,11 @@ const DASH_LABEL_ZH = Object.freeze({
   'default write tier': '默认写入档位',
   gear: '权限档位',
   'legacy untagged': '未标注的旧记忆',
+  // 版本更新分区（0.3.1）：标签是模型给的英文，窗口必须认得出它们。
+  'current version': '当前版本',
+  'latest version': '最新版本',
+  update: '更新',
+  'last checked': '上次检查',
 })
 
 /** 通用短语替换：嵌在自由文本里的固定说法。 */
@@ -63,6 +68,12 @@ const PHRASE_ZH = Object.freeze([
   ['default', '默认'],
   ['ago', '前'],
   ['mode', '模式'],
+  // 版本更新分区的状态值（0.3.1）。这些是**值**不是标签，所以走短语表。
+  ['check disabled (offline)', '检查已关闭（离线）'],
+  ['not checked yet', '还没有检查过'],
+  ['check failed: ', '检查失败：'],
+  [' is available', ' 可更新'],
+  ['up to date', '已是最新'],
 ])
 
 /** @param {unknown} value @returns {string} */

@@ -53,6 +53,13 @@
         safeMode: false
         persistDebounceMs: 250
         recallDefaultTokenBudget: 1600
+        # 版本更新检查：本插件**唯一**的网络出口，也是唯一一条 "要不要联网" 的开关。
+        #   off = 完全离线（代码里的默认值）
+        #   npm = 每 updateCheckIntervalMs 读一次 npm registry 上本包的 latest 版本号
+        # 只发 GET、不带任何标识、不下载不安装不重启；查不到就把"检查失败"当状态显示。
+        # 关掉它：把下面这行改成 off（或删掉这两行）。
+        updateCheck: npm
+        updateCheckIntervalMs: 21600000
 
     - id: anagenesis-tools
       name: dsh-anagenesis/tools

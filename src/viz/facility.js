@@ -42,6 +42,25 @@ function isLive(record) {
   return LIVE.has(String(record?.state ?? ''))
 }
 
+/**
+ * 版本更新状态。来源是 `service.updateStatus()` —— 这里**只做形状归一化**：
+ * 没有服务、只读镜像、老宿主都变成"没检查过"，而不是编一个版本号出来。
+ * @param {any} raw
+ * @returns {{ enabled: boolean, mode: string, current: string, latest: string, available: boolean, checkedAt: number, error: string }}
+ */
+function normalizeUpdate(raw) {
+  const value = raw !== null && typeof raw === 'object' ? raw : {}
+  return {
+    enabled: value.enabled === true,
+    mode: String(value.mode ?? 'off'),
+    current: String(value.current ?? ''),
+    latest: String(value.latest ?? ''),
+    available: value.available === true,
+    checkedAt: num(value.checkedAt ?? 0),
+    error: String(value.error ?? ''),
+  }
+}
+
 /** @param {unknown} value @returns {number} */
 function num(value) {
   const parsed = Number(value)
@@ -270,7 +289,22 @@ export function buildFacilityModel(source, opts = {}) {
   ))
   const locked = records.filter((record) => String(record?.state ?? '') === 'locked')
 
+  const update = normalizeUpdate(source?.update)
+
   const anomalies = []
+  // 更新是**运维层**的事：它不改变任何一条记忆，所以放在告警列表最前面，
+  // 而且要人能一眼看到"这条不是存储出问题了"。
+  if (update.available) {
+    anomalies.push({
+      code: 'update-available',
+      level: 'warn',
+      count: 1,
+      title: 'update available: v' + update.latest,
+      detail: 'a newer dsh-anagenesis is published; this plugin never installs anything by itself',
+      ref: update.latest,
+      ageHours: 0,
+    })
+  }
   if (state.safeMode === true) {
     anomalies.push({
       code: 'safe-mode',
@@ -402,6 +436,9 @@ export function buildFacilityModel(source, opts = {}) {
     origin: String(source?.origin ?? 'mirror'),
     redaction: { level: redaction, note: redactionNote(redaction, { includeBody: includeBody }) },
     building: {
+      // 版本更新：窗口顶条据此显示"有新版本"的牌子。它属于"这栋楼现在跑的软件"，
+      // 不属于楼里的任何一层，所以住在 building 上。
+      update: update,
       storeVersion: num(state.version),
       schemaVersion: num(state.schemaVersion),
       safeMode: state.safeMode === true,

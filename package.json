@@ -1,7 +1,7 @@
 {
   "name": "dsh-anagenesis",
-  "version": "0.3.0",
-  "description": "anagenesis —— DeepSeek Harness 上的可编程记忆编排层 + 自我进化引擎：自带闭环记忆存储（不依赖任何外部记忆插件）、20 个面向 Agent 的语义记忆工具（召回/提交/提升/降级/拆分/锁定/过期/反事实重思 + 可视化）、按项目隔离的记忆作用域、以预设为权限开关的档位体系、运行时可切换的注入策略、带审计与回滚的元策略自调节、全程可逆效应、自动注册 `anagenesis` Agent 预设，以及零依赖可视化层（终端仪表盘 + 文本图表 + 设施仪表盘窗口，同一个包）。",
+  "version": "0.3.1",
+  "description": "anagenesis —— DeepSeek Harness 上的可编程记忆编排层 + 自我进化引擎：自带闭环记忆存储（不依赖任何外部记忆插件）、20 个面向 Agent 的语义记忆工具（召回/提交/提升/降级/拆分/锁定/过期/反事实重思 + 可视化）、按项目隔离的记忆作用域、以预设为权限开关的档位体系、运行时可切换的注入策略、带审计与回滚的元策略自调节、全程可逆效应、自动注册 `anagenesis` Agent 预设，以及零依赖可视化层（设施仪表盘窗口 + 终端仪表盘 + 文本图表；可选的新版本提示），同一个包。",
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -70,7 +70,9 @@
   },
   "disclosure": {
     "cloud": false,
-    "network": [],
+    "network": [
+      "registry.npmjs.org (HTTPS GET only, and only when the core row sets updateCheck = npm — the shipped bundle does; set it to `off` for a fully offline install). It reads https://registry.npmjs.org/dsh-anagenesis/latest, compares that version with its own package.json version and shows the result in the window/dashboard. It sends no identifiers (no instance id, no project fingerprint, no memory content), downloads nothing, installs nothing and changes no file. Every failure is shown as a state (\"check failed: ...\") and never blocks anything else."
+    ],
     "offlineMode": true,
     "apiKeys": [],
     "permissions": {
@@ -94,7 +96,7 @@
   },
   "scripts": {
     "test": "node --import ./test/host-loader.mjs --test test/*.test.js",
-    "check": "node --check src/index.js && node --check src/paths.js && node --check src/scope/project.js && node --check src/scope/index.js && node --check src/permission/tiers.js && node --check src/permission/registry.js && node --check src/permission/guard.js && node --check src/permission/autonomy.js && node --check src/tools/index.js && node --check src/tools/gated.js && node --check src/tools/definitions.js && node --check src/preset/index.js && node --check src/preset/bind.js && node --check src/preset/persona.js && node --check src/preset/definition.js && node --check src/guard/index.js && node --check src/guard/invariants.js && node --check src/meta/reflect.js && node --check src/viz/index.js && node --check src/viz/model.js && node --check src/viz/lang.js && node --check src/viz/tui.js && node --check src/viz/diagram.js && node --check src/viz/facility.js && node --check tools/viz-watch.mjs && node --check tools/asar-scan.mjs && node --check tools/migrate-store.mjs && node --check tools/preflight-publish.mjs && node --check tools/pack-gate.mjs && node --check tools/scope-report.mjs",
+    "check": "node --check src/index.js && node --check src/paths.js && node --check src/scope/project.js && node --check src/scope/index.js && node --check src/permission/tiers.js && node --check src/permission/registry.js && node --check src/permission/guard.js && node --check src/permission/autonomy.js && node --check src/tools/index.js && node --check src/tools/gated.js && node --check src/tools/definitions.js && node --check src/preset/index.js && node --check src/preset/bind.js && node --check src/preset/persona.js && node --check src/preset/definition.js && node --check src/guard/index.js && node --check src/guard/invariants.js && node --check src/meta/reflect.js && node --check src/viz/index.js && node --check src/viz/model.js && node --check src/viz/lang.js && node --check src/viz/tui.js && node --check src/viz/diagram.js && node --check src/viz/facility.js && node --check src/update/check.js && node --check tools/viz-watch.mjs && node --check tools/asar-scan.mjs && node --check tools/migrate-store.mjs && node --check tools/preflight-publish.mjs && node --check tools/pack-gate.mjs && node --check tools/scope-report.mjs",
     "verify:boot": "node tools/verify-boot.mjs",
     "test:window": "node --import ./test/host-loader.mjs --test window/test/*.test.mjs",
     "gate:window": "npm run build:client && npm run check:window && npm run test:window && npm run probe:window",

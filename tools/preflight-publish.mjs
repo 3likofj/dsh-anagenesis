@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync, openSync, readSync, closeSync, fstatSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { compareVersions, parseVersion } from '../src/update/check.js'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -118,6 +119,18 @@ const missingParts = vizParts.filter((part) => pkg.exports?.[`./viz/${part}`] ==
 check('exports 覆盖窗口要用的 6 个 viz 子路径', missingParts.length === 0,
   missingParts.join(', ') || '窗口在安装态走 bare specifier，缺一个就会整体回退到包内相对路径')
 
+// ── 网络出口必须被声明（诚实性闸门） ────────────────────────────────────────
+// 0.3.1 起这个插件会（在 updateCheck = npm 时）读一次 npm registry。disclosure 是
+// 市场与 dsh.so 拿来判风险的地方；代码里有请求而声明里没有，就是文档在说谎。
+const network = Array.isArray(pkg.disclosure?.network) ? pkg.disclosure.network : []
+const updateSource = readText('src/update/check.js')
+const doesNetwork = /registry\.npmjs\.org|fetch\(/.test(updateSource)
+check('disclosure.network 声明了版本检查用的主机',
+  !doesNetwork || network.some((entry) => String(entry).includes('registry.npmjs.org')),
+  doesNetwork ? `network=${JSON.stringify(network)}` : '代码里没有网络请求（无需声明）')
+check('版本检查默认关闭（Config 默认值）', /updateCheck:\s*Schema\.string\(\)\.default\('off'\)/.test(readText('src/index.js')),
+  '代码默认 off，bundle patch 才打开 —— 这样直接 mount 本行的部署是离线的')
+
 const shipped = [...(pkg.files ?? [])]
 check('files 含窗口部分（window/src + window/client.js）',
   shipped.includes('window/src') && shipped.includes('window/client.js'),
@@ -162,11 +175,28 @@ function hostVersion() {
 }
 const host = hostVersion()
 const peer = String(pkg.peerDependencies?.['@deepseek-ai/dsh-tools'] ?? '')
+/**
+ * 宿主版本是否落在 peer 范围里。
+ *
+ * 判据不是"字符串相等"：`^0.2.1-rc.2` **接受** `0.2.1-rc.3`（同 [major,minor,patch]
+ * 的预发布版本之间按优先级比大小），所以抬版会无谓地把 rc.2 上的用户挡在外面。
+ * 这里只要求：同一段版本号，且宿主不低于范围下界。
+ * @param {string} range
+ * @param {string} version
+ * @returns {boolean}
+ */
+function peerCovers(range, version) {
+  if (!range.startsWith('^')) return false
+  const base = parseVersion(range.slice(1))
+  const target = parseVersion(version)
+  if (base === null || target === null) return false
+  if (base.major !== target.major || base.minor !== target.minor || base.patch !== target.patch) return false
+  return compareVersions(version, range.slice(1)) >= 0
+}
 if (host === '') {
   check('peerDependencies 覆盖宿主版本', peer !== '', `${peer || '缺失'}（本机没找到宿主，版本比对跳过）`)
 } else {
-  const wanted = '^' + host
-  check('peerDependencies 覆盖宿主版本', peer === wanted, `peer=${peer || '缺失'} · host=${host}（期望 ${wanted}）`)
+  check('peerDependencies 覆盖宿主版本', peerCovers(peer, host), `peer=${peer || '缺失'} · host=${host}`)
 }
 
 const failed = checks.filter((item) => item.ok !== true)

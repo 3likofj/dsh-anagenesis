@@ -73,6 +73,8 @@ function facilityModel() {
       storeVersion: 3, schemaVersion: 7, safeMode: false, records: 2, live: 2,
       namespaces: 1, projects: 1, floors: 1, floorsShown: 1, stacks: [{ scope: 'global', stack: ['guard', 'exploit'] }],
       gear: 'none', mirror: true,
+      // 有新版本：顶条那块牌子（`.gx-pill--new`）必须在这份样本里，否则样式覆盖检查看不见它。
+      update: { enabled: true, mode: 'npm', current: '0.3.1', latest: '0.4.0', available: true, checkedAt: 1, error: '' },
     },
     metrics: {
       records: 2, live: 2, states: { active: 1, draft: 1 }, kinds: { fact: 2 }, salience: 0.8, confidence: 0.9,
@@ -98,7 +100,8 @@ function facilityModel() {
       { code: 'empty', level: 'warn', title: 'w', detail: 'd', ref: '', ageHours: 0 },
       { code: 'safe-mode', level: 'alert', title: 'a', detail: 'd', ref: '', ageHours: 0 },
     ],
-    anomaliesTotal: 3,
+    anomaliesTotal: 4,
+    // 更新提示也走告警台（`code: update-available` → 渲染层出中文）。
     ticker: [{ seq: 7, type: 'memory.promote', ageMs: 60_000 }],
     limit: { sensors: 24, events: 8, anomalies: 8, floors: 6 },
   }

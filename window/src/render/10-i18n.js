@@ -77,6 +77,7 @@ const SECTION_ZH = Object.freeze({
   journal: '日志尾部',
   salience: '重要度排行',
   viz: '渲染器状态',
+  update: '版本更新',
 })
 
 /** 分区副标题：一句话说明这一块在回答什么问题。 */
@@ -90,6 +91,7 @@ const SECTION_HINT_ZH = Object.freeze({
   journal: '最近发生的操作，倒序',
   salience: '按重要度排序的记忆，含类型与状态',
   viz: '这个渲染器自己的运转情况',
+  update: '这个插件自己的版本，以及 npm 上有没有新版本',
 })
 
 /** 图的三种形态。 */

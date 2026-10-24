@@ -380,6 +380,8 @@ font-size:9.5px;font-weight:700;letter-spacing:.12em;border:1px solid currentCol
 .gx-pill--bad{color:#FF7062;background:rgba(216,48,36,.2)}
 .gx-pill--warn{color:#F5CE63;background:rgba(240,192,48,.14)}
 .gx-pill--ok{color:#7FD6A2;background:rgba(44,122,75,.18)}
+/* 有新版本：信号黄底黑字 —— 顶条上唯一催人看一眼的东西。 */
+.gx-pill--new{color:var(--gx-ink);background:var(--gx-yellow);border-color:var(--gx-yellow);font-weight:700}
 .gx-clock{font-family:var(--gx-mono);font-size:11px;font-variant-numeric:tabular-nums;color:#C9D0DC;flex:0 0 auto}
 
 /* 主体：左侧图标栏 / 中央平面图 / 右侧分区详情 */

@@ -76,6 +76,8 @@ const DEFAULT_LIMITS = Object.freeze({ events: 8, salience: 5, timeline: 12, nod
  *   (project fingerprint, namespace, default write tier) and every namespace the
  *   store physically holds. When it is present the model prefers it over
  *   re-deriving anything from `state.projects`.
+ * @property {any} [update] `service.updateStatus()`: 本包版本与 npm 上的最新版本。
+ *   缺省（只读镜像、独立 watcher、老宿主）时这一块如实说"没检查过"，不猜。
  * @property {any} [permissions] `service.permissionReport()`: preset, gear and
  *   whether write tools are registered. A read-only mirror or the standalone
  *   watcher has no live service and passes nothing (or a `mirror: true`
@@ -111,6 +113,7 @@ export function buildDashboardModel(source, opts = {}) {
     journal: journalSection,
     salience: salienceSection,
     viz: vizSection,
+    update: updateSection,
   }
   const sections = []
   for (const id of wanted) {
@@ -870,6 +873,46 @@ function vizSection(ctx) {
     { label: t.label.liveTui, value: String(self.mode ?? 'tool') === 'watch' ? t.value.liveTuiWatch : t.value.liveTuiTool, tone: 'dim' },
   ]
   return { id: 'viz', title: t.section.viz, rows }
+}
+
+/**
+ * 版本更新。
+ *
+ * 只回答四件事：现在是什么版本、npm 上是什么版本、有没有更新、上次什么时候看的。
+ * **不在这个模型里下载、安装或重启任何东西** —— 它是一条状态，不是一个动作
+ * （要立刻再查一次是一次显式调用：`service.checkForUpdate({ force: true })`）。
+ *
+ * 这个分区**不在** `DASHBOARD_SECTIONS` 里：默认的 `ana_dashboard` 文本帧必须与
+ * 窗口 `/frame` 路由逐字节相同（`tools/live-probe.mjs` 守着），而更新状态会随时间
+ * 变化。它由需要它的调用方显式请求（窗口的结构化 dashboard 模型就是这么做的）。
+ * @param {any} ctx @returns {any}
+ */
+function updateSection(ctx) {
+  const { t } = ctx
+  const raw = ctx.source.update ?? {}
+  const mode = String(raw.mode ?? 'off')
+  const enabled = raw.enabled === true
+  const available = raw.available === true
+  const current = String(raw.current ?? '')
+  const latest = String(raw.latest ?? '')
+  const error = String(raw.error ?? '')
+  const checkedAt = Number(raw.checkedAt ?? 0)
+  const status = available
+    ? { value: t.value.updateAvailable(latest), tone: 'warn' }
+    : !enabled
+      ? { value: t.value.updateOff, tone: 'dim' }
+      : error !== ''
+        ? { value: t.value.updateFailed(error), tone: 'bad' }
+        : checkedAt > 0
+          ? { value: t.value.upToDate, tone: 'ok' }
+          : { value: t.value.updateUnknown, tone: 'dim' }
+  const rows = [
+    { label: t.label.currentVersion, value: current === '' ? t.value.none : current },
+    { label: t.label.latestVersion, value: latest === '' ? t.value.none : latest },
+    { label: t.label.updateStatus, value: status.value, tone: status.tone },
+    { label: t.label.updateCheckedAt, value: checkedAt > 0 ? t.value.age(humanAge(checkedAt, ctx.now)) : t.value.never, tone: 'dim' },
+  ]
+  return { id: 'update', title: t.section.update, rows }
 }
 
 /** @param {any} ctx @returns {any} */

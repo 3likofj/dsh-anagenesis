@@ -355,7 +355,8 @@ const demo = options.root === '' ? await makeDemoStore() : ''
 const storeRoot = options.root === '' ? demo : resolve(options.root)
 
 const { readStoreMirror } = await import(pathToFileURL(join(root, '..', 'src', 'viz', 'mirror.js')).href)
-const { buildDashboardModel, buildDiagramModel } = await import(pathToFileURL(join(root, '..', 'src', 'viz', 'model.js')).href)
+const { DASHBOARD_SECTIONS, buildDashboardModel, buildDiagramModel } = await import(pathToFileURL(join(root, '..', 'src', 'viz', 'model.js')).href)
+const { readOwnVersion } = await import(pathToFileURL(join(root, '..', 'src', 'update', 'check.js')).href)
 const { buildFacilityModel } = await import(pathToFileURL(join(root, '..', 'src', 'viz', 'facility.js')).href)
 
 const mirror = await readStoreMirror(storeRoot)
@@ -380,8 +381,16 @@ const livePermissions = identity === null
  * 渲染源。默认走"实时服务"这套块（档位行因此是真的档位），`--scope mirror` 时
  * 原样用镜像自己的块（档位行会说"只读镜像下不可知"）。
  */
+// 版本状态：预览**不联网**，用本包的版本号同时当作 current 与 latest ——
+// 于是这一屏画的是"已是最新"这个真实状态，而不是编出来的"可更新"。
+const ownVersion = readOwnVersion()
 const source = {
   ...mirror,
+  update: {
+    kind: 'update', version: 1, mode: 'npm', enabled: true, package: 'dsh-anagenesis',
+    registry: 'https://registry.npmjs.org', current: ownVersion, latest: ownVersion,
+    available: false, checked: true, checkedAt: Date.now() - 90_000, error: '', nextCheckAt: 0,
+  },
   engine: { active: ['guard', 'exploit'], health: [] },
   selfStatus: { renders: 128, diagrams: 41, lastAt: Date.now() - 90_000, errors: 0, mode: 'tool' },
   ...(options.scope === 'mirror'
@@ -389,7 +398,13 @@ const source = {
     : { origin: 'live', scope: liveScope ?? mirror.scope, permissions: livePermissions ?? mirror.permissions }),
 }
 const modelOpts = scopeContext === null ? {} : { scopeContext: scopeContext }
-const dashModel = buildDashboardModel(source, { width: 96, color: 'never', limit: { events: 8, salience: 5 }, redaction: 'secrets', ...modelOpts })
+const dashModel = buildDashboardModel(source, {
+  width: 96, color: 'never', limit: { events: 8, salience: 5 }, redaction: 'secrets',
+  // 窗口的结构化仪表盘会多要一个「版本更新」分区（`method=dashboard` 里就是这么组的），
+  // 预览要画同一屏，所以这里也带上它。
+  sections: [...DASHBOARD_SECTIONS, 'update'],
+  ...modelOpts,
+})
 const graphModel = buildDiagramModel(source, { kind: 'memory-graph', limit: { nodes: 40, timeline: 12 }, redaction: 'secrets', ...modelOpts })
 const lifeModel = buildDiagramModel(source, { kind: 'lifecycle', limit: { nodes: 40, timeline: 12 }, redaction: 'secrets', ...modelOpts })
 const timeModel = buildDiagramModel(source, { kind: 'strategy-timeline', limit: { nodes: 40, timeline: 12 }, redaction: 'secrets', ...modelOpts })

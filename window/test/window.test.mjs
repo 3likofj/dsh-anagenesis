@@ -100,6 +100,7 @@ function facilityModel(options = {}) {
     building: {
       storeVersion: 12, schemaVersion: 7, safeMode: false, records: 2, live: 2,
       namespaces: 1, projects: 1, floors: 1, floorsShown: 1, stacks: [], gear: 'none', mirror: true,
+      update: { enabled: true, mode: 'npm', current: '0.3.1', latest: '0.4.0', available: true, checkedAt: 1, error: '' },
     },
     metrics: {
       records: 2, live: 2, states: { active: 1, draft: 1 }, kinds: { fact: 2 },
@@ -118,8 +119,11 @@ function facilityModel(options = {}) {
         accessCount: 1, ageHours: 1, expiresInHours: null, links: 0, tags: [], redacted: false,
       },
     ],
-    anomalies: [{ code: 'locked', level: 'info', title: '1 pinned record(s)', detail: '钉住的记录不会衰减', ref: 'mem-a', ageHours: 0 }],
-    anomaliesTotal: 1,
+    anomalies: [
+      { code: 'update-available', level: 'warn', count: 1, title: 'update available: v0.4.0', detail: 'a newer dsh-anagenesis is published; this plugin never installs anything by itself', ref: '0.4.0', ageHours: 0 },
+      { code: 'locked', level: 'info', title: '1 pinned record(s)', detail: '钉住的记录不会衰减', ref: 'mem-a', ageHours: 0 },
+    ],
+    anomaliesTotal: 2,
     ticker: [{ seq: 7, type: 'memory.promote', ageMs: 60_000 }],
     limit: { sensors: 24, events: 8, anomalies: 8, floors: 6 },
   }
@@ -228,6 +232,8 @@ test('window: the default face is the facility floorplan, and it renders the mod
     assert.ok(html.includes('gx-shell'), 'and it is the facility markup, not the dashboard')
     assert.ok(html.includes('楼层平面'), 'in Chinese')
     assert.ok(html.includes('SENSOR-A'), 'the model reached the renderer: the record label is in the zone detail')
+    assert.ok(html.includes('gx-pill--new') && html.includes('v0.4.0 可更新'), 'a published newer version is announced in the top bar')
+    assert.ok(html.includes('有新版本 v0.4.0'), 'and again, in Chinese, in the anomaly desk')
     assert.equal(findElement(mount.tree, (node) => node.type === 'pre'), null, 'no monospace frame anywhere')
     assert.ok(host.methods().includes('facility'), 'the window asks its own Host route for the facility model')
     assert.ok(!host.methods().includes('dashboard'), 'and it does not fetch the dashboard as well')

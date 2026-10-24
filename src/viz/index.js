@@ -140,6 +140,9 @@ export function apply(ctx, config = {}) {
       scope: svc.scopeReport(exec),
       permissions: svc.permissionReport(exec),
       selfStatus: { renders: stats.renders, diagrams: stats.diagrams, lastAt: stats.lastAt, errors: stats.errors, mode: 'tool' },
+      // 版本与"有没有新版本"：由服务拥有（它才知道自己跑的是哪个包）。老宿主没有这个方法
+      // 时传 null —— 模型会如实说"没检查过"，不会编。
+      update: typeof svc.updateStatus === 'function' ? svc.updateStatus() : null,
       origin: 'live',
     }
   }

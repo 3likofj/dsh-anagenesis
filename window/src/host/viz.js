@@ -168,12 +168,29 @@ export function clamp(value, min, max, fallback) {
 }
 
 /**
+ * 版本更新状态。窗口**不自己上网**：它问核心服务（`service.updateStatus()`），
+ * 而服务是否联网由核心行的 `updateCheck` 决定。没有服务（只读镜像、独立预览、
+ * 老部署）时返回 `null`，模型如实说"没检查过"。
+ * @returns {any}
+ */
+function readUpdate() {
+  if (typeof updateProvider !== 'function') return null
+  try {
+    return updateProvider()
+  } catch {
+    return null
+  }
+}
+
+/**
  * The read-only renderer behind both the HTTP face and the `ana_window` tool.
  * @param {{ rootDir?: string, redaction?: string, width?: number, color?: string, events?: number,
  *   salience?: number, diagramNodes?: number, includeBodies?: boolean, cacheMs?: number,
  *   now?: () => number, logger?: any }} options
  */
 export function createRenderer(options = {}) {
+  /** 由行注入的只读回调；`null` = 这个部署没有版本检查。 */
+  const updateProvider = typeof options.update === 'function' ? options.update : null
   const now = options.now ?? (() => Date.now())
   const cacheMs = clamp(options.cacheMs, 0, 60_000, 750)
   /** One-entry memo. The window polls; the store is not re-read for a repeat. */
@@ -400,8 +417,10 @@ export function createRenderer(options = {}) {
           const root = rootDir()
           if (!layer.looksLikeStore(root)) return { ok: true, empty: true, storeFound: false, root, model: emptyDashboardModel(layer, root) }
           const mirror = await layer.readStoreMirror(root)
-          const model = layer.buildDashboardModel(mirror, {
-            sections: sections ?? undefined,
+          const model = layer.buildDashboardModel({ ...mirror, update: readUpdate() }, {
+            // 窗口的结构化模型**总是**多要一个 `update` 分区（这一屏最上面那行提示的来源）。
+            // 文本帧（`frame`）不加：那一份必须与 ana_dashboard 逐字节相同。
+            sections: sections === null ? [...layer.DASHBOARD_SECTIONS, 'update'] : sections,
             width,
             color: 'never',
             limit: { events, salience },
@@ -438,21 +457,21 @@ export function createRenderer(options = {}) {
       const sensors = clamp(request.sensors, 1, 200, Math.max(cfg.salience * 4, 16))
       const events = clamp(request.events, 1, 200, cfg.events)
       const floors = clamp(request.floors, 1, 20, 6)
-      const key = `facility:${rootDir()}:${redaction}:${sensors}:${events}:${floors}:${cfg.includeBodies}`
+      const key = `facility:${rootDir()}:${redaction}:${sensors}:${events}:${floors}:${cfg.includeBodies}:${readUpdate()?.latest ?? ''}`
       try {
         const value = await cached(key, async () => {
           const root = rootDir()
           if (!layer.looksLikeStore(root)) {
             return {
               ok: true, empty: true, storeFound: false, root,
-              model: layer.buildFacilityModel({ state: { schemaVersion: 0, version: 0, memories: {}, projects: {}, stacks: {} }, events: [], origin: 'mirror' }, {
+              model: layer.buildFacilityModel({ state: { schemaVersion: 0, version: 0, memories: {}, projects: {}, stacks: {} }, events: [], origin: 'mirror', update: readUpdate() }, {
                 now: now(), redaction, includeBody: cfg.includeBodies,
                 limit: { sensors, events, floors },
               }),
             }
           }
           const mirror = await layer.readStoreMirror(root)
-          const model = layer.buildFacilityModel(mirror, {
+          const model = layer.buildFacilityModel({ ...mirror, update: readUpdate() }, {
             now: now(),
             redaction,
             includeBody: cfg.includeBodies,

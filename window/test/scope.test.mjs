@@ -150,7 +150,7 @@ test('window/scope: every English label the model can emit has a Chinese entry',
     )
   }
   assert.equal(R.SECTION_ZH.scope, '作用域', 'the new section has a Chinese title')
-  for (const id of ['overview', 'scope', 'lifecycle', 'kinds', 'strategy', 'tuning', 'journal', 'salience', 'viz']) {
+  for (const id of ['overview', 'scope', 'lifecycle', 'kinds', 'strategy', 'tuning', 'journal', 'salience', 'viz', 'update']) {
     assert.equal(typeof R.SECTION_ZH[id], 'string', `SECTION_ZH.${id} is missing`)
   }
 })
@@ -214,4 +214,40 @@ test('window/scope: a salience row that carries its scope still parses its kind 
   assert.ok(html.includes('事实'), 'the kind chip still resolves')
   assert.ok(html.includes('活跃'), 'the state chip still resolves')
   assert.ok(html.includes(`project:${MINE.slice(0, 12)}`) || html.includes('global'), 'the scope is visible in the row too')
+})
+
+/**
+ * 版本更新的四种状态都必须以中文落地。
+ *
+ * 这一条是被截图抓出来的：`up to date` 当时原样出现在窗口里 —— 模型按设计只说英文
+ * （`lang` 缝），窗口必须翻译；而“值”不是“标签”，走的是 `PHRASE_ZH` 那条兜底路径，
+ * 所以它既不在 `DASH_LABEL_ZH` 的检查里，也不在分区标题的检查里。
+ */
+test('window/update: all four update states render in Chinese, never as an English fragment', () => {
+  const render = (value, tone) => R.renderDashboardHtml({
+    kind: 'dashboard', title: 't', generatedAt: 1, origin: 'mirror',
+    store: { version: 1, schemaVersion: 7, memories: 0, live: 0, safeMode: false, stacks: {} },
+    warnings: [], limits: { events: 8, salience: 5, nodes: 40 }, redaction: { level: 'secrets', note: '' },
+    sections: [{
+      id: 'update', title: 'update', rows: [
+        { label: 'current version', value: '0.3.1' },
+        { label: 'latest version', value: '0.4.0' },
+        { label: 'update', value: value, tone: tone },
+        { label: 'last checked', value: '2m ago', tone: 'dim' },
+      ],
+    }],
+  }).replace(/<[^>]+>/g, ' ')
+
+  for (const [value, expected] of [
+    ['up to date', '已是最新'],
+    ['v0.4.0 is available', 'v0.4.0 可更新'],
+    ['check disabled (offline)', '检查已关闭'],
+    ['not checked yet', '还没有检查过'],
+    ['check failed: HTTP 503', '检查失败：HTTP 503'],
+  ]) {
+    const text = render(value, 'ok')
+    assert.ok(text.includes('版本更新'), 'the section title is Chinese')
+    assert.ok(text.includes('当前版本') && text.includes('最新版本') && text.includes('上次检查'), 'every row label is Chinese')
+    assert.ok(text.includes(expected), `"${value}" must render as "${expected}", got: ${text.slice(0, 160)}`)
+  }
 })

@@ -42,6 +42,7 @@ import {
 import { createPermissions } from './permission/registry.js'
 import { GEAR_NONE, gearCovers, toolsForGear } from './permission/tiers.js'
 import { createPermissionGuard } from './permission/guard.js'
+import { UPDATE_MODES, createUpdateChecker, readOwnVersion } from './update/check.js'
 
 export const name = 'anagenesis-core'
 
@@ -110,6 +111,20 @@ export const Config = Schema.object({
     .description('证据多久没被引用就算「衰减」（毫秒）；只有超过它的既有信念才会被拿去反思。'),
   maxReflectionsPerRun: Schema.number().default(2)
     .description('每次反思最多归档几条假设。'),
+  // ── update check ───────────────────────────────────────────────────────────
+  // 这个插件唯一的网络出口，而且默认**关着**：离线优先是它的身份。bundle 的
+  // patch 里才把它打开（`updateCheck: npm`），想关掉就写 `off` —— 一行、无副作用。
+  // 它只读 npm registry 上本包的 `latest` 版本号，只发 GET，不带任何标识，
+  // 不自动安装、不改任何文件。
+  updateCheck: Schema.string().default('off')
+    .description(`是否检查新版本：${UPDATE_MODES.join(' | ')}。默认 off（完全离线）；设成 npm 时，每隔 updateCheckIntervalMs 向 npm registry 读一次本包的 latest 版本号（只读，GET，不带标识，不自动安装），有新版本就在窗口的设施视图与 ana_audit status 里提示。`),
+  updateCheckIntervalMs: Schema.number().default(6 * 3600 * 1000)
+    .description('更新检查的间隔（毫秒）。默认 6 小时；缓存也按它走，所以并发调用不会连打网络。'),
+  updateRegistry: Schema.string().default('https://registry.npmjs.org')
+    .description('从哪个 npm registry 读版本（镜像可改这里）；只在 updateCheck = npm 时使用。'),
+  updateCheckTimeoutMs: Schema.number().default(5_000)
+    .description('单次检查的超时（毫秒）。超时按"检查失败"记，不影响插件其他任何功能。'),
+
   // ── scope isolation ────────────────────────────────────────────────────────
   // The tier a write lands in when the caller named none. `project` is the
   // default and it is the whole point of the change: "no scope given" used to
@@ -234,6 +249,18 @@ export async function apply(ctx, config = {}) {
     lastFiled: 0,
     lastHypotheses: /** @type {string[]} */ ([]),
   }
+
+  // 版本检查器：状态同步可读（`status()`），网络请求由 `start()` 的定时器驱动，
+  // 生命周期挂在下面的 ctx.effect 上。mode 为 off 时它一次网络都不发。
+  const update = createUpdateChecker({
+    mode: config.updateCheck,
+    current: readOwnVersion(),
+    registry: config.updateRegistry,
+    intervalMs: config.updateCheckIntervalMs,
+    timeoutMs: config.updateCheckTimeoutMs,
+    logger,
+    log: logger,
+  })
 
   /** @type {import('./index.js').AnagenesisService} */
   const service = {
@@ -606,6 +633,22 @@ export async function apply(ctx, config = {}) {
     async reembed() {
       return ops.reembed({ id: activeEmbedder.id, dim: activeEmbedder.dim })
     },
+    /**
+     * 本包的版本与新版本提示，**同步**返回（界面随时可以读，不会因为网络卡住）。
+     * 想立刻查一次就走 `checkForUpdate()`。
+     * @returns {any}
+     */
+    updateStatus() {
+      return update.status()
+    },
+    /**
+     * 立刻查一次（越过缓存）。失败不抛：返回的仍是状态对象，`error` 里写着原因。
+     * @param {{ force?: boolean }} [opts]
+     * @returns {Promise<any>}
+     */
+    async checkForUpdate(opts) {
+      return update.check(opts)
+    },
     /** @returns {any} a compact health/observability snapshot for `ana_audit` */
     status() {
       const state = store.state
@@ -654,6 +697,8 @@ export async function apply(ctx, config = {}) {
         engine: { active: engine.describe(), health: engine.health() },
         tuning: tuner.report(),
         reflection: { ...reflection },
+        // 版本与新版本提示：`ana_audit view=status` 是 Agent 能读到它的地方。
+        update: update.status(),
         // Journal layout and, when the optional retention policy has ever run,
         // what it dropped: a pruned seq must be explainable from status alone.
         journal: store.journalStats(),
@@ -707,6 +752,7 @@ export async function apply(ctx, config = {}) {
     const timerDisposer = startSweep(ops, config, logger)
     const compactionDisposer = startCompaction(store, config, logger)
     const reflectionDisposer = startReflection({ store, ops, logger, config, state: reflection })
+    const updateDisposer = update.start()
     // The execution-time permission guard, as a fallback for a host that mounts
     // only the core row. When the guard row is present it installs the same guard;
     // duplicates are harmless (a guard is monotonic — the first refusal wins and
@@ -719,6 +765,7 @@ export async function apply(ctx, config = {}) {
     return async () => {
       stateListener.dispose()
       guardDisposer()
+      updateDisposer()
       reflectionDisposer()
       compactionDisposer()
       timerDisposer()
