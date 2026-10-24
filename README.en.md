@@ -239,6 +239,10 @@ boundary is **enforced** (8 monotonic invariants plus the `safeMode` freeze), no
 
 ![Facility view — floorplan / zone detail / anomalies / wire](assets/facility.png)
 
+When a newer version exists, the top bar grows one pill (this is the real 0.3.1 → 0.3.2 case):
+
+![The `v0.3.2 可更新` pill in the top bar](assets/update-available.png)
+
 ![Memory graph (horizontal)](assets/graph-lr.png)
 
 ![Lifecycle transitions](assets/lifecycle.png)

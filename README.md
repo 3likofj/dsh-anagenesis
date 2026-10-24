@@ -224,6 +224,10 @@ dsh plugin --profile desktop add link:<仓库绝对路径>
 
 ![设施视图 —— 楼层平面 / 分区详情 / 告警 / 电文](assets/facility.png)
 
+有新版本时，顶条会多一块牌子（下面是 0.3.1 发现 0.3.2 时的真实画面）：
+
+![顶条上的「v0.3.2 可更新」](assets/update-available.png)
+
 ![记忆关系图（横向）](assets/graph-lr.png)
 
 ![生命周期流转](assets/lifecycle.png)
