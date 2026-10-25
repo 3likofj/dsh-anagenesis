@@ -73,6 +73,46 @@ export function tokenize(text) {
 }
 
 /**
+ * Function words that carry no retrieval signal.
+ *
+ * They stay in `tokenize` — the hashing embedder wants the full text, and the
+ * stored vectors were produced that way, so filtering there would silently
+ * change the embedding space without a re-embed. They are removed only from the
+ * *lexical index and query*, where "which package manager does the build use"
+ * should be three terms, not seven: the five filler words were being counted as
+ * evidence of irrelevance, which made a two-record store answer nothing.
+ *
+ * Negations are deliberately absent: "not", "never", "不要", "禁止" change the
+ * meaning of a constraint and must keep counting.
+ */
+const STOPWORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'but', 'by', 'can', 'could',
+  'did', 'do', 'does', 'for', 'from', 'had', 'has', 'have', 'he', 'her', 'his',
+  'how', 'i', 'if', 'in', 'into', 'is', 'it', 'its', 'may', 'might', 'must',
+  'of', 'on', 'or', 'our', 'she', 'should', 'so', 'than', 'that', 'the', 'their',
+  'them', 'then', 'there', 'these', 'they', 'this', 'those', 'to', 'was', 'we',
+  'were', 'what', 'when', 'where', 'which', 'who', 'why', 'will', 'with',
+  'would', 'you', 'your', 'use', 'used', 'using', 'also', 'just', 'very',
+  '的', '了', '是', '在', '和', '与', '及', '或', '我', '你', '他', '她', '它',
+  '这', '那', '就', '也', '都', '而', '但', '被', '把', '让', '么', '吧', '呢',
+  '啊', '个', '们', '之', '其', '此', '从', '到', '为', '以',
+  '这个', '那个', '这些', '那些', '什么', '怎么', '如何', '哪个', '哪些',
+  '为什么', '我们', '你们', '他们', '可以', '已经', '还是', '就是', '一个',
+  '现在', '然后', '因为', '所以', '但是', '如果', '虽然', '而且', '并且',
+  '这样', '那样',
+])
+
+/**
+ * Tokens for lexical retrieval: `tokenize` minus function words.
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function tokenizeTerms(text) {
+  return tokenize(text).filter((token) => !STOPWORDS.has(token))
+}
+
+
+/**
  * Cheap, deterministic token estimate: CJK counts ~1 token/char, latin ~1/3.6.
  * @param {string} text
  * @returns {number}

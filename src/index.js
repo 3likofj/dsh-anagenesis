@@ -262,6 +262,13 @@ export async function apply(ctx, config = {}) {
     log: logger,
   })
 
+  // 召回用的倒排索引缓存。键是 `state.memories` 的对象身份而不是 `version`：
+  // 每次 recall 都会写一条审计事件（`stats.recalls`），version 因此每次都变，
+  // 用 version 做键等于没有缓存。`applyPatch` 在没有 memorySet 时保留同一个
+  // memories 对象，所以身份键恰好表达"记忆集合变没变"。
+  /** @type {{ memories: any, index: any }} */
+  const recallIndexCache = { memories: null, index: null }
+
   /** @type {import('./index.js').AnagenesisService} */
   const service = {
     name: 'anagenesis',
@@ -581,6 +588,7 @@ export async function apply(ctx, config = {}) {
         engine: engine.forScope(scope),
         scope,
         embed: embedFn,
+        indexCache: recallIndexCache,
         context: {
           scopeFilter: context.filter,
           pulse,

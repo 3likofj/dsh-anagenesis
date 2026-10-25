@@ -752,7 +752,7 @@ async function runChecks(paths) {
   check('anagenesis-core: store opened its own journal inside the sandbox',
     resolve(service.store.rootDir) === resolve(storeDir) && existsSync(join(storeDir, 'journal')))
   const status = service.status()
-  check('anagenesis-core: status() reports the live store', status.schemaVersion === 7 && status.rootDir === service.rootDir,
+  check('anagenesis-core: status() reports the live store', status.schemaVersion === 8 && status.rootDir === service.rootDir,
     `schemaVersion=${status.schemaVersion} stacks=${JSON.stringify(status.stacks?.global)}`)
   check('anagenesis-core: status() exposes the journal layout across the adapter boundary',
     typeof status.journal?.live === 'number' && typeof status.journal?.archives === 'number'

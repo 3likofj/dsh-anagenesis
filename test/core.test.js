@@ -327,7 +327,8 @@ test('salience: usage feedback is partitioned per caller scope, and v3 migrates 
   assert.equal(migrated.schemaVersion, SCHEMA_VERSION)
   // Pinned deliberately: a schema bump is a *deliberate* act, and this line is
   // what forces whoever bumps it to come here and say so in the diff.
-  assert.equal(migrated.schemaVersion, 7)
+  // v8: `confirmedAt` added (recency stops reading `updatedAt`).
+  assert.equal(migrated.schemaVersion, 8)
   assert.deepEqual(migrated.memories.m1.salienceByScope, {})
   assert.equal(effectiveSalience(migrated.memories.m1, 'agent:anyone'), 0.7, 'the pre-v4 salience survives as the default')
   assert.deepEqual(migrated.memories.m1.access, { count: 3, hits: 2, misses: 1, lastAt: 5 })

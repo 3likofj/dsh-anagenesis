@@ -8,13 +8,23 @@
  * contributes score deltas, vetoes and section formatting at every step.
  *
  * Scoring (all terms normalized to [0,1] before weighting):
- *   score = wLex*sat(bm25) + wVec*(cos+1)/2 + wRecency*2^(-age/halfLife)
- *         + wConf*confidence + wSal*salience + wAccess*sat(log1p(hits))
- *         + wScope*scopeMatch + sum(strategy score deltas)
- *   and then the whole score is multiplied by `crossProjectFactor` whenever the
- *   record came from another project (only possible with an explicit
- *   `crossProject: true`), so "other projects' experience" can never outrank a
- *   local record that is otherwise its equal.
+ *   relevance = (wLex*coverage + wVec*cos+) / (wLex + wVec)
+ *   score = relevance + wRecency*2^(-age/halfLife) + wConf*confidence
+ *         + wSal*salience + wAccess*sat(log1p(hits)) + wScope*scopeMatch
+ *         + sum(strategy score deltas)
+ *   where `coverage` is IDF-weighted query coverage (not raw BM25: raw BM25
+ *   grows with the number of matched terms and made a long, vaguely related
+ *   record outrank a short, exact one), and `cos+` is `max(0, cos)` — the old
+ *   `(cos+1)/2` gave every record a 0.5 semantic floor, so unrelated records
+ *   collected 0.13 of free score and the ranking could not separate them.
+ *
+ * Two gates run before packing, because a composite score that always adds
+ * priors can never say "nothing here is relevant":
+ *   - an absolute floor (`recall.minRelevance`), and
+ *   - a relative floor (a candidate must reach `relevanceMargin` of the best
+ *     candidate's relevance), so one strong match does not drag nine weak ones
+ *     into the context window.
+ * Both are skipped for an empty query (the "orient" briefing case).
  * Packing is MMR-lite: greedy max(score - lambda * maxCos(alreadySelected)),
  * stopping at the token budget, so a high-recall plan does not ship five copies
  * of the same belief.
@@ -28,7 +38,7 @@
  * @module dsh-anagenesis/memory/recall
  */
 
-import { clamp, estimateTokens, saturate, tokenize } from '../util.js'
+import { clamp, estimateTokens, saturate, tokenizeTerms } from '../util.js'
 import { cosine, embed } from './embed.js'
 import { effectiveSalience, isLegacyUnscoped } from '../store/schema.js'
 import { CONFLICT_PENALTY, createScopeFilter, detectScopeConflicts, scopeMatch } from '../scope/index.js'
@@ -105,6 +115,39 @@ export const INTENTS = Object.freeze({
 export const GRANULARITIES = Object.freeze(['gist', 'claims', 'full', 'timeline'])
 
 /**
+ * A candidate must reach this fraction of the best candidate's relevance to be
+ * injected. 0.45 was chosen on `bench/`: lower lets topical noise back in,
+ * higher starts dropping the second and third genuinely useful record.
+ */
+export const RELEVANCE_MARGIN = 0.45
+
+/**
+ * MMR only ever considers this many top-scoring candidates. Re-scoring the
+ * whole store after every pick would be O(N²); re-scoring a bounded shortlist
+ * is the standard compromise and is enough for a context window.
+ */
+export const MMR_SHORTLIST = 120
+
+/**
+ * Per-intent multiplier on the relevance floor.
+ *
+ * The floor is one number on purpose — seven tunable floors would be seven ways
+ * to drift. But the intents are not asking the same question: `verify` and
+ * `orient` are "show me what exists" (a small store must still answer them),
+ * while `recall_fact` and `reuse_procedure` are "answer this one question" and
+ * should stay strict. The factors encode that difference once, in code.
+ */
+export const INTENT_FLOOR_FACTOR = Object.freeze({
+  orient: 0.55,
+  recall_fact: 1,
+  recall_precedent: 0.9,
+  avoid_mistake: 0.8,
+  reuse_procedure: 1,
+  verify: 0.5,
+  contrast: 0.7,
+})
+
+/**
  * Merge scope params over intent defaults over caller overrides.
  * @param {string} intent
  * @param {Record<string, number|string|boolean>} [scopeParams]
@@ -129,6 +172,11 @@ export function defaultsFor(intent, scopeParams = {}) {
     explorationRate: pick(scopeParams, 'recall.explorationRate', 0.25),
     diversity: pick(scopeParams, 'recall.diversity', base.diversity ?? 0.25),
     crossProjectFactor: pick(scopeParams, 'recall.crossProjectFactor', 0.4),
+    // Query relevance floor. There was no floor before, so recall filled the
+    // token budget with whatever ranked highest — a query about Kubernetes got
+    // twelve unrelated records. Measured against `bench/`: see the table in
+    // `HANDOFF.md` §5.
+    minRelevance: pick(scopeParams, 'recall.minRelevance', 0.22),
   }
 }
 
@@ -187,7 +235,7 @@ export function planRecall(request = {}, params = {}, callerScope = 'global', em
     intent,
     label: defaults.label,
     query: String(request.query ?? '').trim(),
-    tokens: tokenize(request.query ?? ''),
+    tokens: tokenizeTerms(request.query ?? ''),
     kinds: Array.isArray(request.kinds) && request.kinds.length > 0 ? request.kinds : defaults.kinds,
     states: defaults.states,
     minConfidence: clamp(request.minConfidence ?? defaults.minConfidence, 0, 1),
@@ -213,12 +261,21 @@ export function planRecall(request = {}, params = {}, callerScope = 'global', em
     explorationRate: defaults.explorationRate,
     diversity: defaults.diversity,
     crossProjectFactor: defaults.crossProjectFactor,
+    // An explicit caller floor wins; otherwise the intent's factor scales the
+    // configured floor (see INTENT_FLOOR_FACTOR).
+    minRelevance: request.minRelevance !== undefined
+      ? clamp(request.minRelevance, 0, 1)
+      : clamp(defaults.minRelevance * (INTENT_FLOOR_FACTOR[intent] ?? 1), 0, 1),
+    // How far below the best candidate's relevance a weaker one may sit. Not a
+    // tunable: it is a property of the query set, not of one installation.
+    relevanceMargin: RELEVANCE_MARGIN,
     queryVector: request.query ? embedFn(String(request.query)) : null,
   }
 }
 
 /**
- * Inverted index over live records. Rebuilt lazily per snapshot version.
+ * Inverted index over live records. Cached by the service on the identity of
+ * `state.memories`, so an audit-only transaction does not rebuild it.
  * @param {import('../store/schema.js').AnagenesisState} state
  * @returns {{ postings: Map<string, Map<string, number>>, lengths: Map<string, number>, avgdl: number, total: number }}
  */
@@ -228,7 +285,7 @@ export function buildIndex(state) {
   let total = 0
   for (const record of Object.values(state.memories)) {
     if (record.state === 'retired') continue
-    const tokens = tokenize(`${record.subject} ${record.gist} ${record.body} ${record.tags.join(' ')}`)
+    const tokens = tokenizeTerms(`${record.subject} ${record.gist} ${record.body} ${record.tags.join(' ')}`)
     const counts = new Map()
     for (const token of tokens) counts.set(token, (counts.get(token) ?? 0) + 1)
     for (const [token, count] of counts) {
@@ -242,31 +299,68 @@ export function buildIndex(state) {
     lengths.set(record.id, tokens.length)
     total += tokens.length
   }
-  return { postings, lengths, avgdl: lengths.size === 0 ? 1 : total / lengths.size, total }
+  return { postings, lengths, avgdl: lengths.size === 0 ? 1 : total / lengths.size, total, docCount: lengths.size }
 }
 
 /**
- * Okapi BM25 over the in-memory inverted index.
+ * Lexical match of a query against one record, as three numbers.
+ *
+ * `coverage` is IDF-weighted coverage over the query terms the store *knows*
+ * (0..1) — the ranking signal. It answers "of the words this store understands,
+ * how much does this record contain", so an unknown product name in the query
+ * does not by itself punish a record.
+ *
+ * `coverageFull` puts the unknown terms back into the denominator at maximum
+ * IDF. That is the *gate* signal: a query made mostly of words this store has
+ * never seen ("Kubernetes Ingress 证书") must not look like a perfect match on
+ * the one common word it happens to share.
+ *
+ * `evidence` is the raw IDF mass that matched, kept for traces.
+ *
+ * Replaces raw Okapi BM25 in ranking: BM25 is unbounded and grows with the
+ * number of matched terms, so a long record sharing five common CJK bigrams
+ * outranked the one record that actually answered the query.
  * @param {string[]} queryTokens
  * @param {string} id
- * @param {{ postings: Map<string, Map<string, number>>, lengths: Map<string, number>, avgdl: number }} index
- * @param {number} docCount
- * @returns {number}
+ * @param {{ postings: Map<string, Map<string, number>>, lengths: Map<string, number>, avgdl: number, docCount?: number }} index
+ * @param {number} [docCount] fallback when the index predates `docCount`
+ * @returns {{ coverage: number, coverageFull: number, evidence: number }}
  */
-export function bm25(queryTokens, id, index, docCount) {
+export function lexicalMatch(queryTokens, id, index, docCount) {
+  const total = index.docCount ?? docCount ?? index.lengths.size ?? 1
+  const length = index.lengths.get(id) ?? 0
   const k1 = 1.2
   const b = 0.75
-  const length = index.lengths.get(id) ?? 0
-  let score = 0
+  let knownIdf = 0
+  let allIdf = 0
+  let matchedIdf = 0
   for (const token of new Set(queryTokens)) {
     const df = index.postings.get(token)?.size ?? 0
-    if (df === 0) continue
-    const tf = index.postings.get(token)?.get(id) ?? 0
+    const idf = Math.log(1 + (total - df + 0.5) / (df + 0.5))
+    allIdf += idf
+    if (df > 0) knownIdf += idf
+    const tf = df === 0 ? 0 : (index.postings.get(token)?.get(id) ?? 0)
     if (tf === 0) continue
-    const idf = Math.log(1 + (docCount - df + 0.5) / (df + 0.5))
-    score += idf * ((tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (length / index.avgdl))))
+    matchedIdf += idf * ((tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (length / index.avgdl))))
   }
-  return score
+  // The length-normalised term factor can exceed 1 for short documents; a
+  // coverage above 1 would let one short record outrank a perfect longer match.
+  return {
+    coverage: knownIdf === 0 ? 0 : Math.min(1, matchedIdf / knownIdf),
+    coverageFull: allIdf === 0 ? 0 : Math.min(1, matchedIdf / allIdf),
+    evidence: matchedIdf,
+  }
+}
+
+/**
+ * @param {string[]} queryTokens
+ * @param {string} id
+ * @param {any} index
+ * @param {number} [docCount]
+ * @returns {number}
+ */
+export function coverage(queryTokens, id, index, docCount) {
+  return lexicalMatch(queryTokens, id, index, docCount).coverage
 }
 
 /**
@@ -321,7 +415,7 @@ function legacyInScope(record, wanted) {
  * @param {import('../store/store.js').MemoryStore} store
  * @param {object} request
  * @param {{ params?: Record<string, any>, engine?: any, scope?: string, now?: () => number,
- *   indexCache?: { version: number, index: any },
+ *   indexCache?: { memories: any, index: any },
  *   context?: { projectId?: string|null, sessionId?: string|null, crossProject?: boolean, reason?: string } }} [opts]
  * @returns {Promise<any>}
  */
@@ -336,18 +430,20 @@ export async function recall(store, request = {}, opts = {}) {
   // budget. Caller-specified maxTokens/minConfidence stay locked.
   const plan = engine?.plan !== undefined ? engine.plan(basePlan) : basePlan
 
-  let index = opts.indexCache?.index
-  if (index === undefined || opts.indexCache?.version !== state.version) {
+  let index = opts.indexCache !== undefined && opts.indexCache.memories === state.memories
+    ? opts.indexCache.index
+    : undefined
+  if (index === undefined) {
     index = buildIndex(state)
-    if (opts.indexCache) {
+    if (opts.indexCache !== undefined) {
+      opts.indexCache.memories = state.memories
       opts.indexCache.index = index
-      opts.indexCache.version = state.version
     }
   }
 
   const docCount = index.lengths.size || 1
   const candidates = []
-  const rejected = { state: 0, kind: 0, confidence: 0, scope: 0, expired: 0, strategy: 0, crossProject: 0 }
+  const rejected = { state: 0, kind: 0, confidence: 0, scope: 0, expired: 0, strategy: 0, crossProject: 0, relevance: 0, relevanceRelative: 0 }
   let crossProjectAdmitted = 0
 
   for (const record of Object.values(state.memories)) {
@@ -360,10 +456,24 @@ export async function recall(store, request = {}, opts = {}) {
     if (verdict.weight < 1) { crossProjectAdmitted += 1; rejected.crossProject += 1 }
     if (record.expiresAt !== null && record.expiresAt <= now && record.state !== 'expired') { rejected.expired++; continue }
     if (engine !== undefined && engine.admits !== undefined && !engine.admits(record, plan)) { rejected.strategy++; continue }
-    candidates.push(scoreRecord(record, plan, index, docCount, now, engine, verdict))
+    const scored = scoreRecord(record, plan, index, docCount, now, engine, verdict)
+    // The absolute relevance floor. Skipped for an empty query, which is the
+    // deliberate "brief me on this project" path: there is nothing to be
+    // relevant *to*, so recency/confidence are the whole ranking.
+    if (plan.tokens.length > 0 && scored.matchFull < plan.minRelevance) { rejected.relevance++; continue }
+    candidates.push(scored)
   }
 
-  const packed = pack(candidates, plan, now, engine)
+  // The relative floor: keep the strong matches, drop the ones that are only
+  // there because the budget had room.
+  let scoredPool = candidates
+  if (plan.tokens.length > 0 && candidates.length > 1) {
+    const topRelevance = candidates.reduce((max, row) => Math.max(max, row.relevance), 0)
+    scoredPool = candidates.filter((row) => row.relevance >= topRelevance * plan.relevanceMargin)
+    rejected.relevanceRelative = candidates.length - scoredPool.length
+  }
+
+  const packed = pack(scoredPool, plan, now, engine)
   // Conflict detection runs on what was *selected*, and its only effect is on
   // the projection: the cross-project record's effective confidence is halved,
   // its score drops, and the injection block says so. No stored record is
@@ -445,14 +555,26 @@ export function applyConflictPenalty(selected, conflicts, plan) {
  *   The scope judgment already made by the candidate loop. Passed in rather than
  *   recomputed so scoring and admission can never disagree about which project a
  *   record belongs to.
- * @returns {{ record: any, score: number, parts: Record<string, number>, reason: string, vector: number[],
- *   crossProject: boolean, effectiveConfidence: number }}
+ * @returns {{ record: any, score: number, relevance: number, matchFull: number, evidence: number,
+ *   parts: Record<string, number>, reason: string, vector: number[], crossProject: boolean,
+ *   effectiveConfidence: number }}
  */
 export function scoreRecord(record, plan, index, docCount, now, engine, verdict) {
-  const lex = plan.tokens.length === 0 ? 0 : saturate(bm25(plan.tokens, record.id, index, docCount), 1.5)
-  const vec = plan.queryVector === null ? 0 : (cosine(plan.queryVector, record.embedding) + 1) / 2
+  const match = plan.tokens.length === 0
+    ? { coverage: 0, coverageFull: 1, evidence: 0 }
+    : lexicalMatch(plan.tokens, record.id, index, docCount)
+  const lex = match.coverage
+  const vec = plan.queryVector === null ? 0 : Math.max(0, cosine(plan.queryVector, record.embedding))
+  // Relevance is the *query-fitness* half of the score. Priors (recency,
+  // confidence, salience, access, scope) are deliberately kept out of it: they
+  // answer "is this record trustworthy/fresh", not "does it answer the query".
+  const relevanceWeight = Math.max(1e-9, plan.weights.lex + plan.weights.vec)
+  const relevance = plan.tokens.length === 0 ? 1 : (plan.weights.lex * lex + plan.weights.vec * vec) / relevanceWeight
   const halfLife = engine?.halfLifeMs !== undefined ? engine.halfLifeMs(record, plan) : plan.halfLifeMs
-  const age = Math.max(0, now - record.updatedAt)
+  // Confirmation time, not edit time: linking or retagging a belief must not
+  // reset its decay clock (v8). Pre-v8 records without the field fall back to
+  // `createdAt`, then to `updatedAt`, so a replay of an old journal still ranks.
+  const age = Math.max(0, now - (Number(record.confirmedAt) || Number(record.createdAt) || Number(record.updatedAt) || now))
   const recency = !Number.isFinite(halfLife) || halfLife <= 0 ? 1 : Math.pow(2, -age / halfLife)
   const access = saturate(Math.log1p(record.access.hits), 1.2)
   const scopeVerdict = verdict ?? (plan.scopeFilter === undefined || plan.scopeFilter === null
@@ -473,20 +595,30 @@ export function scoreRecord(record, plan, index, docCount, now, engine, verdict)
     scope: Number(plan.weights.scope ?? 0) * scopeVerdict.weight,
     strategy: 0,
   }
-  let reason = `lex=${lex.toFixed(2)} vec=${vec.toFixed(2)} recency=${recency.toFixed(2)} scope=${scopeVerdict.relation}`
+  let reason = `rel=${relevance.toFixed(2)} (lex=${lex.toFixed(2)} vec=${vec.toFixed(2)}) recency=${recency.toFixed(2)} scope=${scopeVerdict.relation}`
   if (engine?.score !== undefined) {
     const contribution = engine.score(record, plan)
     parts.strategy = contribution.delta
     if (contribution.reason !== undefined) reason = `${reason}; ${contribution.reason}`
   }
-  let score = Object.values(parts).reduce((sum, value) => sum + value, 0)
-  // The second half of the down-weight: an admitted cross-project record also
-  // has its whole score multiplied down, so it loses to a local record of equal
-  // lexical/semantic/confidence merit regardless of how the terms are weighted.
-  if (crossProject) score *= Number(plan.crossProjectFactor ?? 1)
+  // The cross-project down-weight applies to the *priors*, not to relevance.
+  // Multiplying the whole score (the old behaviour) meant an irrelevant local
+  // record beat the foreign record that actually answered the question, which
+  // made `crossProject: true` unusable. Isolation is already enforced upstream
+  // by the scope filter; this factor only decides how much trust to extend.
+  const prior = parts.recency + parts.conf + parts.sal + parts.access + parts.scope
+  const score = parts.lex + parts.vec
+    + (crossProject ? prior * Number(plan.crossProjectFactor ?? 1) : prior)
+    + parts.strategy
   return {
     record,
     score,
+    relevance,
+    // Gate signal: coverage with unknown query terms counted against the
+    // record. Kept separate from `relevance` so ranking stays fair to records
+    // whose vocabulary simply differs from the query's.
+    matchFull: match.coverageFull,
+    evidence: match.evidence,
     parts,
     reason,
     vector: record.embedding,
@@ -497,7 +629,14 @@ export function scoreRecord(record, plan, index, docCount, now, engine, verdict)
 }
 
 /**
- * MMR-lite packing under a token budget.
+ * MMR packing under a token budget.
+ *
+ * The old implementation sorted once and then subtracted a diversity penalty
+ * while walking the list, so the order never changed — a near-duplicate that
+ * should have been pushed down kept its slot. This is the actual MMR loop over
+ * a bounded shortlist: each pick re-scores every remaining candidate against
+ * what is already selected, and a candidate that does not fit the budget is
+ * removed from the pool instead of silently blocking the next one.
  * @param {ReturnType<typeof scoreRecord>[]} candidates
  * @param {any} plan
  * @param {number} now
@@ -506,26 +645,43 @@ export function scoreRecord(record, plan, index, docCount, now, engine, verdict)
  */
 export function pack(candidates, plan, now, engine) {
   const ranked = [...candidates].sort((a, b) => b.score - a.score)
+  const pool = ranked.slice(0, MMR_SHORTLIST)
+  const costOf = new Map(pool.map((candidate) => [
+    candidate,
+    estimateTokens(renderMemory(candidate.record, plan.granularity, engine, plan)) + 8,
+  ]))
+  const taken = new Set()
   /** @type {ReturnType<typeof scoreRecord>[]} */
   const selected = []
   let budget = plan.tokenBudget
-  for (const candidate of ranked) {
-    if (selected.length >= plan.limit) break
-    const cost = estimateTokens(renderMemory(candidate.record, plan.granularity, engine, plan)) + 8
-    if (cost > budget) continue
-    if (selected.length > 0 && plan.diversity > 0) {
-      let maxSim = 0
-      for (const chosen of selected) maxSim = Math.max(maxSim, (cosine(candidate.vector, chosen.vector) + 1) / 2)
-      const penalty = plan.diversity * maxSim
-      candidate.parts.diversity = -penalty
-      candidate.score -= penalty
-      if (candidate.score <= 0) continue
+  while (selected.length < plan.limit) {
+    /** @type {{ candidate: any, mmr: number, similarity: number } | null} */
+    let best = null
+    for (const candidate of pool) {
+      if (taken.has(candidate)) continue
+      let similarity = 0
+      if (selected.length > 0 && plan.diversity > 0) {
+        for (const chosen of selected) similarity = Math.max(similarity, Math.max(0, cosine(candidate.vector, chosen.vector)))
+      }
+      const mmr = candidate.score - plan.diversity * similarity
+      if (best === null || mmr > best.mmr) best = { candidate, mmr, similarity }
     }
-    candidate.tokenCost = cost
-    selected.push(candidate)
+    if (best === null) break
+    // A candidate that only adds redundancy is worse than an empty slot.
+    if (best.mmr <= 0 && selected.length > 0) break
+    const cost = costOf.get(best.candidate) ?? plan.tokenBudget
+    if (cost > budget) {
+      taken.add(best.candidate)
+      continue
+    }
+    best.candidate.parts.diversity = -(plan.diversity * best.similarity)
+    best.candidate.mmrScore = best.mmr
+    best.candidate.tokenCost = cost
+    selected.push(best.candidate)
+    taken.add(best.candidate)
     budget -= cost
   }
-  const dropped = ranked.filter((candidate) => !selected.includes(candidate))
+  const dropped = ranked.filter((candidate) => !taken.has(candidate))
   return { selected, dropped }
 }
 

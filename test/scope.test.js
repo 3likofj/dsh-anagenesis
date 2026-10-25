@@ -158,17 +158,29 @@ test('scope: a memory written in one project is invisible from another, while a 
     assert.equal(betaFact.scope, `project:${fingerprintProject({ cwd: beta }).id.slice(0, 12)}`)
     assert.equal(globalFact.scope, 'global')
 
-    // 2. Recall from alpha: its own fact and the global one, never beta's.
+    // 2. Recall from alpha: its own fact, never beta's. Recall is now gated on
+    //    query relevance, so a global record is asserted with a query that
+    //    actually asks about it — the old version relied on "always fill the
+    //    budget", which is exactly the behaviour this change removes.
     const fromAlpha = await call('ana_recall', { intent: 'verify', query: 'build flags and node version' }, alphaExec)
     assert.ok(fromAlpha.selected.includes(alphaFact.id), 'alpha must see its own memory')
-    assert.ok(fromAlpha.selected.includes(globalFact.id), 'alpha must see the global memory')
     assert.equal(fromAlpha.selected.includes(betaFact.id), false, 'alpha must NOT see beta\'s memory')
+    const globalFromAlpha = await call('ana_recall', { intent: 'orient', query: 'commit message convention imperative mood' }, alphaExec)
+    assert.ok(globalFromAlpha.selected.includes(globalFact.id), 'alpha must see the global memory when it is relevant')
 
     // 3. And the mirror image from beta.
     const fromBeta = await call('ana_recall', { intent: 'verify', query: 'build flags and node version' }, betaExec)
     assert.ok(fromBeta.selected.includes(betaFact.id), 'beta must see its own memory')
-    assert.ok(fromBeta.selected.includes(globalFact.id), 'beta must see the global memory')
     assert.equal(fromBeta.selected.includes(alphaFact.id), false, 'beta must NOT see alpha\'s memory')
+    const globalFromBeta = await call('ana_recall', { intent: 'orient', query: 'commit message convention imperative mood' }, betaExec)
+    assert.ok(globalFromBeta.selected.includes(globalFact.id), 'beta must see the global memory when it is relevant')
+
+    // 3b. The other half of the new contract: a query with no lexical overlap
+    //     returns nothing rather than the whole store. This is the assertion
+    //     that would have caught "recall always fills the token budget".
+    const unrelated = await call('ana_recall', { intent: 'recall_fact', query: 'kubernetes ingress certificate rotation' }, alphaExec)
+    assert.equal(unrelated.selected.length, 0, 'an unrelated query must not inject anything')
+    assert.ok(unrelated.rejected.relevance >= 1, 'and the rejection counter says why')
 
     // 4. The rejection counter says *why* it was dropped, and the pulse says
     //    which project the search ran in — a silent empty answer would be the
@@ -305,7 +317,7 @@ test('scope: a cross-project memory that contradicts the local one is detected, 
 
     const recalled = await call('ana_recall', {
       intent: 'verify',
-      query: 'which package manager does the build use',
+      query: 'should the build use pnpm',
       crossProject: true,
       authorizeReason: 'checking a conflicting precedent',
     }, betaExec)
@@ -472,7 +484,7 @@ test('scope: the project fingerprint is a stable pure function, and a legacy wor
       },
     }, 1000)
 
-    assert.equal(migrated.schemaVersion, 7)
+    assert.equal(migrated.schemaVersion, 8)
     assert.equal(migrated.memories.withPath.scope.tier, 'project')
     assert.equal(migrated.memories.withPath.scope.projectId, pathA.id)
     assert.equal(migrated.memories.withPath.scope.origin, 'migrated-workspace')

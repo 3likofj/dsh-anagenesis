@@ -25,6 +25,10 @@ export const PARAM_ENVELOPE = Object.freeze({
   'recall.halfLifeMs': { min: 600_000, max: 90 * 24 * 3600 * 1000, step: 600_000, default: 14 * 24 * 3600 * 1000 },
   'recall.explorationRate': { min: 0, max: 0.6, step: 0.05, default: 0.25 },
   'recall.diversity': { min: 0, max: 0.9, step: 0.05, default: 0.25 },
+  // Query-relevance floor. Tunable because how strict "relevant enough" should
+  // be is a property of the store's own vocabulary, and the benchmark only
+  // covers the vocabulary we wrote for it.
+  'recall.minRelevance': { min: 0, max: 0.85, step: 0.05, default: 0.22 },
   // The two scope-isolation knobs. They are tunable on purpose: how much a
   // project should trust *another* project's experience is exactly the kind of
   // thing that has to be learned from results rather than decided once. The

@@ -135,6 +135,7 @@ export function createMemoryOps(deps) {
           state: 'locked',
           confidence: Math.max(record.confidence, CONFIDENCE_FLOOR.locked),
           expiresAt: ttlMs === null ? null : ts + Math.max(0, ttlMs),
+          confirmedAt: ts,
           updatedAt: ts,
           provenance: { ...record.provenance, evidence: [...record.provenance.evidence, `locked: ${reason}`].slice(-32) },
         }
@@ -526,6 +527,9 @@ export function createMemoryOps(deps) {
         ...record,
         state: to,
         confidence: Math.max(record.confidence, CONFIDENCE_FLOOR[to] ?? 0),
+        // Promotion is a confirmation; demotion is not (`to` is then a
+        // non-established state, so the field is left where it was).
+        confirmedAt: to === 'active' || to === 'verified' || to === 'locked' ? ts : (record.confirmedAt ?? record.createdAt ?? ts),
         updatedAt: ts,
         provenance: evidence.length === 0
           ? { ...record.provenance, evidence: [...record.provenance.evidence, `${verb}: ${reason}`].slice(-32) }

@@ -10,7 +10,7 @@
 import { clamp, ulid } from '../util.js'
 import { fingerprintProject, namespaceOf, normalizeTier, scopeTag } from '../scope/project.js'
 
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 8
 
 /**
  * Which vector backend produced the stored embeddings.
@@ -133,6 +133,11 @@ export function createMemory(spec, env) {
       derivedFrom: (spec.provenance?.derivedFrom ?? []).slice(0, 32),
     },
     createdAt: now,
+    // When the belief was last *confirmed* (promoted with evidence, locked), as
+    // opposed to last edited. Recency ranking reads this, not `updatedAt`:
+    // linking or retagging a six-month-old belief used to make it look fresh,
+    // which is the opposite of what time decay is for.
+    confirmedAt: now,
     updatedAt: now,
     // Session memories are the one tier that is *supposed* to die: a temporary
     // task's working notes must not outlive the task. A TTL is attached at write
@@ -212,6 +217,7 @@ function resolveScope(spec, env) {
  *   isolation existed instead of pretending they were always tagged.
  * @property {{ source: string, author: string|null, taskId: string|null, evidence: string[], derivedFrom: string[] }} provenance
  * @property {number} createdAt
+ * @property {number} confirmedAt when the belief was last confirmed (v8)
  * @property {number} updatedAt
  * @property {number|null} expiresAt
  * @property {string[]} supersedes
@@ -318,7 +324,7 @@ export const AUDIT_CAP = 4000
 export function migrateState(raw, now = Date.now()) {
   let state = normalizeRoot(raw, now)
   /** @type {Record<number, (s: any, now: number) => any>} */
-  const steps = { 1: v1ToV2, 2: v2ToV3, 3: v3ToV4, 4: v4ToV5, 5: v5ToV6, 6: v6ToV7 }
+  const steps = { 1: v1ToV2, 2: v2ToV3, 3: v3ToV4, 4: v4ToV5, 5: v5ToV6, 6: v6ToV7, 7: v7ToV8 }
   let guard = 0
   while (state.schemaVersion < SCHEMA_VERSION && guard++ < 16) {
     const step = steps[state.schemaVersion]
@@ -333,7 +339,48 @@ export function migrateState(raw, now = Date.now()) {
   // something to repair, so the common path pays for one property check per
   // record and nothing else.
   if (hasUntaggedRecords(state)) state = repairRecordScopes(state, now)
+  if (hasMissingConfirmedAt(state)) state = repairConfirmedAt(state, now)
   return state
+}
+
+/**
+ * @param {any} state
+ * @returns {boolean}
+ */
+export function hasMissingConfirmedAt(state) {
+  for (const record of Object.values(state?.memories ?? {})) {
+    if (!Number.isFinite(/** @type {any} */ (record)?.confirmedAt)) return true
+  }
+  return false
+}
+
+/**
+ * Backfill `confirmedAt` from `createdAt`.
+ *
+ * v8 added the field so recency ranking stops reading `updatedAt` (linking a
+ * six-month-old belief made it look fresh). Every pre-v8 record gets its
+ * creation time, which is the honest answer: we do not know that it was ever
+ * re-confirmed. Runs on the migration chain *and* on the replay-only boot path,
+ * because a store that never flushed a snapshot rebuilds records from old
+ * journal events and never sees `v7ToV8` at the document level.
+ * @param {any} state
+ * @param {number} [now]
+ * @returns {any}
+ */
+export function repairConfirmedAt(state, now = Date.now()) {
+  const memories = { ...(state.memories ?? {}) }
+  let repaired = 0
+  for (const [id, raw] of Object.entries(memories)) {
+    const record = /** @type {any} */ (raw)
+    if (Number.isFinite(record?.confirmedAt)) continue
+    memories[id] = {
+      ...record,
+      confirmedAt: Number(record?.createdAt) || Number(record?.updatedAt) || now,
+    }
+    repaired += 1
+  }
+  if (repaired === 0) return state
+  return { ...state, memories }
 }
 
 /**
@@ -478,6 +525,11 @@ function v5ToV6(state) {
  */
 function v6ToV7(state, now) {
   return { ...repairRecordScopes(state, now), schemaVersion: 7 }
+}
+
+/** v8: records gain `confirmedAt` (recency no longer reads `updatedAt`). */
+function v7ToV8(state, now) {
+  return { ...repairConfirmedAt(state, now), schemaVersion: 8 }
 }
 
 /**

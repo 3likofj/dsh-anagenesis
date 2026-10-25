@@ -47,7 +47,7 @@ export function selectReflectionTargets(state, opts = {}) {
     // An open challenge means the engine already asked this question; asking
     // again every interval would bury the answer in duplicates.
     if (record.links.some((link) => link.rel === 'challenged_by' && memoryIds.has(link.to))) continue
-    const age = now - (record.updatedAt ?? record.createdAt ?? now)
+    const age = now - (record.confirmedAt ?? record.createdAt ?? record.updatedAt ?? now)
     if (age < staleAfterMs) continue
     const reason = decayReason(record, now, staleAfterMs)
     if (reason === null) continue
@@ -75,7 +75,7 @@ function decayReason(record, now, staleAfterMs) {
   if (typeof record.confidence === 'number' && record.confidence < floor) {
     return `its confidence ${record.confidence} fell below the ${record.state} floor ${floor}`
   }
-  if (now - (record.updatedAt ?? 0) > staleAfterMs * 2) {
+  if (now - (record.confirmedAt ?? record.createdAt ?? record.updatedAt ?? 0) > staleAfterMs * 2) {
     return 'nothing has touched it in twice the staleness window'
   }
   return null

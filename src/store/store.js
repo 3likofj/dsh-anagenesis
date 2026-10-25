@@ -17,7 +17,7 @@ import { join } from 'node:path'
 import { Mutex, atomicWriteFile, debounce, nowMs, readJsonSync } from '../util.js'
 import { Journal } from './journal.js'
 import { applyPatch, invertPatch, isEmptyPatch, mergePatches, touchedMemoryIds } from './patch.js'
-import { SCHEMA_VERSION, emptyState, migrateState, recordNamespace } from './schema.js'
+import { SCHEMA_VERSION, emptyState, migrateState, recordNamespace, repairConfirmedAt } from './schema.js'
 import { GLOBAL_NAMESPACE } from '../scope/project.js'
 import { embed as defaultEmbed } from '../memory/embed.js'
 
@@ -203,7 +203,10 @@ export class MemoryStore {
       this.#events.set(event.seq, asReadModel(event))
       applied += 1
     }
-    this.#state = freezeState(state)
+    // Journal events written before v8 carry records without `confirmedAt`.
+    // Backfilling here keeps a replay-only boot (no snapshot) in the current
+    // shape instead of relying on every reader to remember the fallback.
+    this.#state = freezeState(repairConfirmedAt(state, this.#clock()))
     if (applied > 0) this.#logger.info(`anagenesis: replayed ${applied} journal event(s)`)
     if (archived > 0) this.#logger.info(`anagenesis: checkpoint restored ${archived} archived event(s) for audit and revert`)
   }

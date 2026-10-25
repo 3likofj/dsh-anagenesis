@@ -5,6 +5,7 @@ node_modules/
 # 内部文档：留作本地会话连续性使用，**不进公开仓库**
 HANDOFF.md
 PROJECT-STATE.md
+.internal/
 
 # 命名迁移时的原件备份（只作本地留档）
 .rename-backup/

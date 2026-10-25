@@ -1,0 +1,187 @@
+{
+  "generatedAt": "2026-10-25T14:06:30.256Z",
+  "corpus": {
+    "records": 211,
+    "queries": 41
+  },
+  "overall": {
+    "ndcg10": 0.9593686405421972,
+    "mrr": 0.8536585365853658,
+    "recall5": 0.9861111111111112,
+    "precision5": 0.7902439024390243,
+    "contamination": 0.2119628339140534,
+    "leaks": 0,
+    "tokensPerRelevant": 164.69444444444446,
+    "selected": 1.6097560975609757,
+    "queries": 41
+  },
+  "buckets": {
+    "cross-project": {
+      "ndcg10": 1,
+      "mrr": 1,
+      "recall5": 1,
+      "precision5": 1,
+      "contamination": 0,
+      "leaks": 0,
+      "tokensPerRelevant": 123,
+      "selected": 2,
+      "queries": 1
+    },
+    "dedupe": {
+      "ndcg10": 1,
+      "mrr": 1,
+      "recall5": 1,
+      "precision5": 1,
+      "contamination": 0,
+      "leaks": 0,
+      "tokensPerRelevant": 147,
+      "selected": 1,
+      "queries": 1
+    },
+    "exact": {
+      "ndcg10": 0.9846220730654774,
+      "mrr": 0.9791666666666666,
+      "recall5": 1,
+      "precision5": 0.8013888888888889,
+      "contamination": 0.20238095238095236,
+      "leaks": 0,
+      "tokensPerRelevant": 171.45833333333334,
+      "selected": 1.875,
+      "queries": 24
+    },
+    "graph": {
+      "ndcg10": 0.27541155237618664,
+      "mrr": 1,
+      "recall5": 0.5,
+      "precision5": 1,
+      "contamination": 0,
+      "leaks": 0,
+      "tokensPerRelevant": 141,
+      "selected": 1,
+      "queries": 1
+    },
+    "irrelevant": {
+      "ndcg10": null,
+      "mrr": 0,
+      "recall5": null,
+      "precision5": 1,
+      "contamination": 0,
+      "leaks": 0,
+      "tokensPerRelevant": null,
+      "selected": 0,
+      "queries": 4
+    },
+    "paraphrase": {
+      "ndcg10": 0.9384882922619097,
+      "mrr": 0.9166666666666666,
+      "recall5": 1,
+      "precision5": 0.6944444444444443,
+      "contamination": 0.3055555555555555,
+      "leaks": 0,
+      "tokensPerRelevant": 170.83333333333334,
+      "selected": 1.8333333333333333,
+      "queries": 6
+    },
+    "scope": {
+      "ndcg10": 1,
+      "mrr": 0.5,
+      "recall5": 1,
+      "precision5": 0.25,
+      "contamination": 0.75,
+      "leaks": 0,
+      "tokensPerRelevant": 151,
+      "selected": 1.5,
+      "queries": 2
+    },
+    "session": {
+      "ndcg10": 1,
+      "mrr": 1,
+      "recall5": 1,
+      "precision5": 1,
+      "contamination": 0,
+      "leaks": 0,
+      "tokensPerRelevant": 135,
+      "selected": 1,
+      "queries": 1
+    },
+    "supersede": {
+      "ndcg10": 1,
+      "mrr": 1,
+      "recall5": 1,
+      "precision5": 0.5,
+      "contamination": 0.5,
+      "leaks": 0,
+      "tokensPerRelevant": 92,
+      "selected": 2,
+      "queries": 1
+    }
+  },
+  "intents": {
+    "avoid_mistake": {
+      "ndcg10": 0.9261859507142916,
+      "mrr": 0.75,
+      "recall5": 1,
+      "precision5": 0.7638888888888888,
+      "contamination": 0.23611111111111108,
+      "leaks": 0,
+      "tokensPerRelevant": 209,
+      "selected": 1.6666666666666667,
+      "queries": 6
+    },
+    "orient": {
+      "ndcg10": 0.9589921948412731,
+      "mrr": 0.9444444444444444,
+      "recall5": 1,
+      "precision5": 0.787037037037037,
+      "contamination": 0.21296296296296294,
+      "leaks": 0,
+      "tokensPerRelevant": 91.55555555555556,
+      "selected": 1.6666666666666667,
+      "queries": 9
+    },
+    "recall_fact": {
+      "ndcg10": 1,
+      "mrr": 0.8181818181818182,
+      "recall5": 1,
+      "precision5": 0.6393939393939394,
+      "contamination": 0.36363636363636365,
+      "leaks": 0,
+      "tokensPerRelevant": 198.44444444444446,
+      "selected": 1.9090909090909092,
+      "queries": 11
+    },
+    "recall_precedent": {
+      "ndcg10": 1,
+      "mrr": 0.8333333333333334,
+      "recall5": 1,
+      "precision5": 0.8666666666666667,
+      "contamination": 0.14285714285714285,
+      "leaks": 0,
+      "tokensPerRelevant": 205.2,
+      "selected": 1.8333333333333333,
+      "queries": 6
+    },
+    "reuse_procedure": {
+      "ndcg10": 1,
+      "mrr": 0.875,
+      "recall5": 1,
+      "precision5": 0.9375,
+      "contamination": 0.0625,
+      "leaks": 0,
+      "tokensPerRelevant": 158.14285714285714,
+      "selected": 1,
+      "queries": 8
+    },
+    "verify": {
+      "ndcg10": 0.27541155237618664,
+      "mrr": 1,
+      "recall5": 0.5,
+      "precision5": 1,
+      "contamination": 0,
+      "leaks": 0,
+      "tokensPerRelevant": 141,
+      "selected": 1,
+      "queries": 1
+    }
+  }
+}
