@@ -49,6 +49,18 @@ export const PARAM_ENVELOPE = Object.freeze({
 export const OBJECTIVES = Object.freeze(['utilization', 'precision', 'token_efficiency', 'task_success'])
 
 /**
+ * How many feedback samples a change needs before it can be judged.
+ *
+ * The old loop learned from *nothing*: `observe` appended samples and never
+ * credited an arm, so UCB1's means stayed at zero and only `proposal.reward`
+ * (which callers rarely pass) moved them. Credit now accrues to the arm of the
+ * most recent change from the samples that arrive after it, and a change is
+ * "in flight" until this window is filled — which is also what stops two
+ * changes from being judged against each other.
+ */
+export const EVALUATION_WINDOW = 5
+
+/**
  * Namespaces whose knobs the tuner may write. Anything outside this list — the
  * guard stack, envelopes, schema — is frozen against self-modification.
  */
@@ -152,12 +164,34 @@ export class Tuner {
     else if (objective === 'task_success') reward = success
     else reward = 0.5 * precision + 0.3 * efficiency + 0.2 * success
 
-    const samples = [...this.#tuning().samples, reward].slice(-200)
+    const tuning = this.#tuning()
+    const samples = [...tuning.samples, reward].slice(-200)
+    // Credit the change under evaluation with this sample. This is the missing
+    // half of the loop: without it the bandit only ever saw the rewards a
+    // caller happened to attach to a proposal.
+    const history = tuning.history.map((row) => ({ ...row }))
+    let arms = tuning.arms
+    const last = history[history.length - 1]
+    if (last !== undefined && last.evaluatedAt === undefined && typeof last.armId === 'string') {
+      const since = samples.length - Number(last.samplesAt ?? 0)
+      if (since >= EVALUATION_WINDOW) {
+        // One pull, one reward: the arm is credited with the *mean* of the
+        // window that followed the change, not with five separate rewards.
+        const window = samples.slice(Number(last.samplesAt ?? 0))
+        const windowReward = window.reduce((sum, value) => sum + value, 0) / window.length
+        const arm = { ...(arms[last.armId] ?? { pulls: 0, reward: 0 }) }
+        arm.reward += windowReward
+        arms = { ...arms, [last.armId]: arm }
+        last.evaluatedAt = Date.now()
+        last.windowReward = Number(windowReward.toFixed(4))
+        last.windowSamples = window.length
+      }
+    }
     await this.#store.transact({
       // The learning state rides the same transaction as the row that explains
       // it: a restart resumes from the journal, and `revert(seq)` takes the
       // sample back out.
-      tuningSet: this.#patch({ ...this.#tuning(), samples }),
+      tuningSet: this.#patch({ ...tuning, samples, history, arms }),
       auditAppend: [{
         id: `fb_${this.#store.state.version + 1}`,
         at: Date.now(),
@@ -234,6 +268,15 @@ export class Tuner {
     if (!opts.force && tuning.samples.length < minSamples) {
       throw new Error(`anagenesis: only ${tuning.samples.length} feedback samples (need ${minSamples}); call ana_feedback after a few recalls first`)
     }
+    // One change in flight at a time: two overlapping changes cannot be told
+    // apart by the samples that follow them, so the comparison would be noise.
+    const pending = tuning.history[tuning.history.length - 1]
+    if (!opts.force && pending !== undefined && pending.evaluatedAt === undefined) {
+      const since = tuning.samples.length - Number(pending.samplesAt ?? 0)
+      if (since < EVALUATION_WINDOW) {
+        throw new Error(`anagenesis: the change "${pending.auditId}" is still being evaluated (${since}/${EVALUATION_WINDOW} samples); send feedback first, or pass force: true`)
+      }
+    }
     const spec = PARAM_ENVELOPE[proposal.param]
     if (spec === undefined) throw new Error(`anagenesis: "${proposal.param}" is not tunable`)
     const to = clamp(Number(proposal.to), spec.min, spec.max)
@@ -250,7 +293,13 @@ export class Tuner {
     if (proposal.reward !== undefined) {
       arm.reward += Number(proposal.reward)
     }
-    const history = [...tuning.history, { metric: this.#metric(), at: Date.now(), auditId }].slice(-100)
+    const history = [...tuning.history, {
+      metric: this.#metric(),
+      at: Date.now(),
+      auditId,
+      armId,
+      samplesAt: tuning.samples.length,
+    }].slice(-100)
     const result = await this.#store.transact({
       paramsSet: { [scope]: { [proposal.param]: to } },
       tuningSet: this.#patch({ samples: tuning.samples, arms: { ...tuning.arms, [armId]: arm }, history }),
@@ -281,15 +330,33 @@ export class Tuner {
     const previous = tuning.history[tuning.history.length - 1]
     const epsilon = this.value('meta.improvementEpsilon')
     if (previous === undefined) {
-      return { metric, samples: tuning.samples.length, delta: 0, rollback: false, note: 'no previous tune to compare against' }
+      return { metric, samples: tuning.samples.length, delta: 0, rollback: false, window: EVALUATION_WINDOW, note: 'no previous tune to compare against' }
     }
-    const delta = metric - previous.metric
+    // Compare like with like: the baseline was recorded at apply time, so only
+    // the samples that arrived *after* it describe this change.
+    const since = tuning.samples.slice(Number(previous.samplesAt ?? tuning.samples.length))
+    if (since.length === 0) {
+      return {
+        metric,
+        samples: tuning.samples.length,
+        delta: 0,
+        rollback: false,
+        window: EVALUATION_WINDOW,
+        pending: since.length,
+        note: `no feedback since ${previous.auditId}; send ${EVALUATION_WINDOW} samples before judging it`,
+      }
+    }
+    const after = since.reduce((sum, value) => sum + value, 0) / since.length
+    const delta = after - previous.metric
     const rollback = delta < -epsilon
     return {
-      metric,
+      metric: Number(after.toFixed(4)),
       samples: tuning.samples.length,
-      delta,
+      delta: Number(delta.toFixed(4)),
       rollback,
+      window: EVALUATION_WINDOW,
+      pending: since.length,
+      auditId: previous.auditId,
       note: rollback
         ? `metric regressed by ${Math.abs(delta).toFixed(3)} (> ${epsilon}); roll back ${previous.auditId}`
         : `metric ${delta >= 0 ? 'improved' : 'drifted'} by ${delta.toFixed(3)} (within epsilon ${epsilon})`,
@@ -321,7 +388,9 @@ export class Tuner {
     return {
       metric: this.#metric(),
       samples: tuning.samples.length,
+      ready: tuning.samples.length >= this.value('meta.minSamples'),
       applied: tuning.history.length,
+      evaluation: this.evaluate(),
       objectiveHistory: tuning.history.slice(-10),
     }
   }

@@ -117,6 +117,13 @@ export class Journal {
   #closed = false
   /** @type {{ live: number, archives: number, checkpoints: number, prunedThroughSeq: number }} */
   #stats = { live: 0, archives: 0, checkpoints: 0, prunedThroughSeq: 0 }
+  /**
+   * What the last full read had to skip. A torn tail line is expected after a
+   * crash (the write was never acknowledged); anything else — a hand-edited or
+   * truncated file — is a data-integrity signal the operator should see rather
+   * than a silent success.
+   */
+  #readHealth = { tornLines: 0 }
   /** @type {{ throughSeq: number, at: number|null, droppedSegments: number, droppedEvents: number, retainEvents: number }} */
   #pruned = { throughSeq: 0, at: null, droppedSegments: 0, droppedEvents: 0, retainEvents: 0 }
 
@@ -211,6 +218,11 @@ export class Journal {
     return { ...this.#stats, byNamespace: this.namespaceStats() }
   }
 
+  /** @returns {{ tornLines: number }} how many lines the last full read skipped */
+  readHealth() {
+    return { ...this.#readHealth }
+  }
+
   /**
    * Per-namespace layout — the physical-isolation evidence, and what the
    * dashboard prints so a human can see which project owns which files.
@@ -273,7 +285,10 @@ export class Journal {
       try {
         events.push(JSON.parse(line))
       } catch {
-        // torn write or manual edit: skip the line, keep the store loadable
+        // torn write or manual edit: skip the line, keep the store loadable —
+        // but count it, so `status().journal.health` can say the log was not
+        // read cleanly instead of pretending it was.
+        this.#readHealth.tornLines += 1
       }
     }
     return events
@@ -299,6 +314,7 @@ export class Journal {
    * @returns {Promise<object[]>}
    */
   async readAll() {
+    this.#readHealth = { tornLines: 0 }
     /** @type {Map<number, object>} */
     const merged = new Map()
     for (const event of await this.readArchive()) merged.set(event.seq, event)

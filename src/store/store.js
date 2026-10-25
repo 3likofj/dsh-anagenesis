@@ -36,6 +36,8 @@ export class MemoryStore {
   #state
   /** @type {Journal} */
   #journal
+  /** @type {{ tornLines: number, gaps: { from: number, to: number }[] }} */
+  #journalHealth
   /** @type {Mutex} */
   #mutex = new Mutex()
   /** @type {string} */
@@ -68,6 +70,8 @@ export class MemoryStore {
   constructor(opts) {
     this.#rootDir = opts.rootDir
     this.#journal = opts.journal
+    /** @type {{ tornLines: number, gaps: { from: number, to: number }[] }} */
+    this.#journalHealth = { tornLines: 0, gaps: [] }
     this.#state = opts.state
     this.#embed = opts.embed ?? ((text) => defaultEmbed(text))
     this.#logger = opts.logger ?? { info: () => {}, warn: () => {} }
@@ -184,6 +188,11 @@ export class MemoryStore {
     let state = this.#state
     let applied = 0
     let archived = 0
+    const gaps = []
+    // A seq that is missing from the middle of the log means events were lost
+    // (hand-edited file, a truncated segment, a bad copy). Replay still applies
+    // what it has; this records the hole so `status()` can report it.
+    let expected = state.version + 1
     for (const event of events) {
       if (typeof event.seq !== 'number') continue
       if (event.seq <= state.version) {
@@ -198,6 +207,8 @@ export class MemoryStore {
         this.#events.set(event.seq, asReadModel(event))
         continue
       }
+      if (event.seq > expected) gaps.push({ from: expected, to: event.seq - 1 })
+      expected = event.seq + 1
       state = applyPatch(state, event.patch)
       state = { ...state, version: event.seq, updatedAt: event.ts ?? state.updatedAt }
       this.#events.set(event.seq, asReadModel(event))
@@ -206,6 +217,7 @@ export class MemoryStore {
     // Journal events written before v8 carry records without `confirmedAt`.
     // Backfilling here keeps a replay-only boot (no snapshot) in the current
     // shape instead of relying on every reader to remember the fallback.
+    this.#journalHealth = { tornLines: this.#journal.readHealth().tornLines, gaps }
     this.#state = freezeState(repairConfirmedAt(state, this.#clock()))
     if (applied > 0) this.#logger.info(`anagenesis: replayed ${applied} journal event(s)`)
     if (archived > 0) this.#logger.info(`anagenesis: checkpoint restored ${archived} archived event(s) for audit and revert`)
@@ -522,7 +534,7 @@ export class MemoryStore {
    * @returns {{ live: number, archives: number, checkpoints: number, prunedThroughSeq: number, pruned: object }}
    */
   journalStats() {
-    return { ...this.#journal.stats(), pruned: this.#journal.pruneMarker() }
+    return { ...this.#journal.stats(), pruned: this.#journal.pruneMarker(), health: this.#journalHealth }
   }
 }
 
