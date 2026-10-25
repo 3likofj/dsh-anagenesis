@@ -1,5 +1,10 @@
 # dsh-anagenesis
 
+**给 Agent 一套它自己管得住、你也看得见的记忆。**
+
+不是又一个"自动记忆黑箱"：记忆操作是 Agent 手里的 **20 个语义工具**；注入策略是运行时可换的**纯函数栈**；
+每一次变更都带逆操作、进日志、可回滚；整个存储自包含、离线、零依赖。
+
 [English](README.en.md) · [更新日志](CHANGELOG.md) · Apache-2.0
 
 [![npm](https://img.shields.io/npm/v/dsh-anagenesis?label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis)
@@ -11,12 +16,32 @@
 [![dsh.so install · dsh 0.2.0-rc.2](https://www.dsh.so/badge/install/dsh-anagenesis@0.2.0-rc.2.svg)](https://www.dsh.so/artifact/dsh-anagenesis/)
 [![dshfind](https://dshfind.com/api/badge/3likofj/dsh-anagenesis?lang=zh)](https://dshfind.com/zh/plugins/3likofj/dsh-anagenesis?ref=badge)
 
-> **给 Agent 一套它自己管得住、你也看得见的记忆。**
->
-> 不是又一个"自动记忆黑箱"：记忆操作是 Agent 手里的工具，注入策略运行时可换，
-> 每次变更都带逆操作，自我调参有边界、有审计、能回滚 —— 而整个存储自包含、离线、零依赖。
-
 ![anagenesis 桌面窗口 —— 设施平面图（默认面）](assets/facility.png)
+
+## 一眼看懂它和"自动记忆插件"的差别
+
+| | 典型「自动记忆」插件 | **anagenesis** |
+|---|---|---|
+| **谁在写** | 后台抽取流水线，模型不知道它记了什么 | Agent 主动调用 `ana_remember` / `ana_promote` / `ana_link`，**写什么、为什么写由它自己决定** |
+| **怎么取** | 一条固定的相似度管线 | **7 种意图**（orient / recall_fact / recall_precedent / avoid_mistake / reuse_procedure / verify / contrast）× **6 套可切换策略栈** |
+| **错了怎么办** | 改了就改了 | 每笔变更都是声明式 patch，带 `revert()`；**日志是唯一真相**，审计可复查，重启后仍可回滚 |
+| **谁看得见** | 全局共享，靠自觉 | 项目指纹自动隔离；跨项目要显式授权并逐条标注；**预设 = 权限开关**（没启用时写入工具根本不存在） |
+| **依赖什么** | 向量库 / 云服务 / 模型调用 | **零运行时依赖、离线、单文件 JSONL**；唯一网络出口是可选版本检查 |
+| **质量证据** | 靠演示视频 | 自带**离线检索基准**：211 条记忆 × 41 条查询，`npm run bench` 可复跑、可对比、可回退 |
+
+## 四个能立刻感受到的点
+
+1. **不会"越想越脏"**：相关性不足的记忆不会为了填满预算被注入；被取代的旧信念默认不再出现；
+   `ana_recall` 会明确告诉你排除了谁、为什么（`excluded.nearMisses`）。
+2. **不会"记了就忘为什么"**：每条记忆带 kind / state / confidence / provenance / links；
+   关系参与检索（1 跳图扩展），不是画着好看。
+3. **不会"改了就回不去"**：单写 Mutex + 事件溯源 + 冻结快照；`revert(seq)` 在重启后仍然有效，
+   连"撤销审计行"都会被显式拒绝。
+4. **不会"出了事看不见"**：设施仪表盘把存储画成楼层（命名空间）× 分区（记忆类型）× 传感器（记录），
+   右侧是读数、能耗基线、告警与实时电文；换到"体检"面是 11 个分区的中文仪表盘。
+
+> **它不做什么**：不做后台自动抽取、不桥接别的记忆插件、不调用模型、不起子进程、不加遥测。
+> 卸载之后，你的记忆仍然是一堆可读的 JSONL。
 
 ## 0.4.0 新增：先量，再改
 
@@ -267,7 +292,7 @@ dsh plugin --profile desktop add link:<仓库绝对路径>
 
 有新版本时，顶条会多一块牌子（下面是 0.3.1 发现 0.3.2 时的真实画面）：
 
-![顶条上的「v0.3.2 可更新」](assets/update-available.png)
+![顶条上的「有新版本」提示（示例 v0.4.1）](assets/update-available.png)
 
 ![记忆关系图（横向）](assets/graph-lr.png)
 

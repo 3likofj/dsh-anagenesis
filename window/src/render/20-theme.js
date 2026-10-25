@@ -211,6 +211,17 @@ background:var(--ana-bg2);overflow:hidden}
 .ana-card--hot{border-color:var(--ana-bad);background:color-mix(in srgb,var(--ana-bad) 10%,transparent)}
 
 /* ── 分区卡片 ───────────────────────────────────────────────────────────── */
+.ana-groups{display:flex;flex-direction:column;gap:18px}
+.ana-group-head{display:flex;align-items:baseline;gap:9px;padding:0 2px 7px;
+border-bottom:1px solid var(--ana-line);margin-bottom:11px}
+.ana-group-title{position:relative;font-size:13px;font-weight:700;letter-spacing:.05em;padding-left:11px}
+.ana-group-title::before{content:"";position:absolute;left:0;top:50%;width:3px;height:12px;margin-top:-6px;
+border-radius:2px;background:var(--ana-accent)}
+.ana-group-sub{font-size:10.5px;letter-spacing:.16em;color:var(--ana-dim)}
+.ana-group-grid{columns:2;column-gap:12px}
+.ana-group-grid .ana-sect{break-inside:avoid;margin-bottom:12px}
+.ana-sect--wide{column-span:all}
+@media (max-width:1080px){.ana-group-grid{columns:1}}
 .ana-sect{margin-bottom:12px;border:1px solid var(--ana-line);border-radius:10px;background:var(--ana-bg2);overflow:hidden}
 .ana-sect-head{display:flex;align-items:baseline;gap:8px;padding:8px 12px;border-bottom:1px solid var(--ana-line)}
 .ana-sect-title{font-weight:650;font-size:13px}
@@ -395,6 +406,8 @@ font:inherit;font-size:9.5px;letter-spacing:.04em}
 .gx-rail-btn:hover{color:#E7EAF0;background:rgba(255,255,255,.07)}
 .gx-rail-btn--on{color:var(--gx-ink);background:var(--gx-yellow);font-weight:700}
 .gx-rail-label{display:block;line-height:1}
+.gx-rail-group{display:block;text-align:center;font-size:8.5px;letter-spacing:.16em;color:#5E6675;
+padding:7px 0 3px;font-weight:700}
 .gx-rail-gap{flex:1 1 auto}
 
 /* 平面图 */
@@ -421,9 +434,16 @@ justify-content:flex-end;max-width:60%}
 .gx-floor{border:1.5px solid var(--gx-ink);background:var(--gx-panel);box-shadow:3px 3px 0 rgba(15,16,20,.12);
 overflow:hidden}
 .gx-floor--on{border-color:var(--gx-blue);box-shadow:3px 3px 0 var(--gx-blue)}
-.gx-floor-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto 58px;align-items:center;gap:9px;
+.gx-floor-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto auto 58px;align-items:center;gap:9px;
 padding:5px 9px;border-bottom:1.5px solid currentColor;background:var(--gx-canvas-2)}
-.gx-floor-no{font-family:var(--gx-mono);font-size:11px;color:var(--gx-muted);font-variant-numeric:tabular-nums}
+.gx-floor-no{display:inline-flex;align-items:center;justify-content:center;width:22px;height:18px;
+background:var(--gx-ink);color:#F2F4F8;font-family:var(--gx-mono);font-size:10px;font-weight:700;
+font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.gx-floor-health{font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 6px;border-radius:999px;
+border:1px solid currentColor;white-space:nowrap;font-variant-numeric:tabular-nums}
+.gx-floor-health--ok{color:var(--gx-green)}
+.gx-floor-health--warn{color:#9A7400;background:color-mix(in srgb,var(--gx-yellow) 28%,transparent)}
+.gx-floor-health--bad{color:#fff;background:var(--gx-red);border-color:var(--gx-red)}
 .gx-floor-name{font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gx-floor-tag{font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--gx-muted);
 border:1px solid var(--gx-line-2);padding:0 5px;white-space:nowrap}

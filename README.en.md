@@ -1,5 +1,12 @@
 # dsh-anagenesis
 
+**Memory your agent actually owns — and you can actually see.**
+
+Not another "automatic memory black box": memory operations are **20 semantic tools** the agent calls on
+purpose; the injection strategy is a **switchable stack of pure functions**; every change carries its
+inverse, lands in the journal and can be reverted; the whole store is self-contained, offline and
+dependency-free.
+
 [中文](README.md) · [Changelog](CHANGELOG.md) · Apache-2.0
 
 [![npm](https://img.shields.io/npm/v/dsh-anagenesis?label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-anagenesis)
@@ -11,13 +18,34 @@
 [![dsh.so install · dsh 0.2.0-rc.2](https://www.dsh.so/badge/install/dsh-anagenesis@0.2.0-rc.2.svg)](https://www.dsh.so/artifact/dsh-anagenesis/)
 [![dshfind](https://dshfind.com/api/badge/3likofj/dsh-anagenesis?lang=en)](https://dshfind.com/en/plugins/3likofj/dsh-anagenesis?ref=badge)
 
-> **Memory your agent actually owns — and you can actually see.**
->
-> Not another "automatic memory black box". Memory operations are tools the agent calls on purpose,
-> the injection strategy is switchable at runtime, every change comes with its inverse, self-tuning is
-> bounded, audited and revertible — and the whole store is self-contained, offline and dependency-free.
-
 ![The anagenesis desktop window — the facility floorplan (default face)](assets/facility.png)
+
+## At a glance: how it differs from an "automatic memory" plugin
+
+| | Typical memory plugin | **anagenesis** |
+|---|---|---|
+| **Who writes** | a background extraction pipeline; the model never knows what was recorded | the agent calls `ana_remember` / `ana_promote` / `ana_link` — **it decides what to write and why** |
+| **How retrieval works** | one fixed similarity pipeline | **7 intents** (orient / recall_fact / recall_precedent / avoid_mistake / reuse_procedure / verify / contrast) × **6 switchable strategy stacks** |
+| **When it is wrong** | edits are edits | every change is a declarative patch with `revert()`; **the journal is the only truth**, auditable and revertible after a restart |
+| **Who can see it** | shared globally, on trust | project fingerprints isolate by default; crossing projects needs explicit authorization and is labelled per row; **the preset is a permission switch** (write tools literally do not exist without it) |
+| **What it depends on** | vector DB / cloud / model calls | **zero runtime dependencies, offline, plain JSONL**; the only network egress is an optional version check |
+| **Quality evidence** | a demo video | a bundled **offline retrieval benchmark**: 211 memories × 41 queries, reproducible with `npm run bench` |
+
+## Four things you feel immediately
+
+1. **It does not get dirtier the more you use it.** Irrelevant memories are not injected just to fill the
+   budget; superseded beliefs stop appearing; `ana_recall` reports exactly who was excluded and why
+   (`excluded.nearMisses`).
+2. **You never lose the "why".** Every record carries kind / state / confidence / provenance / links, and
+   those links participate in retrieval (one-hop graph expansion) instead of being decoration.
+3. **Every change is reversible.** Single-writer mutex + event sourcing + frozen snapshots; `revert(seq)`
+   still works after a restart — and reverting an audit row is explicitly refused.
+4. **Nothing hides when it goes wrong.** The facility view draws the store as floors (namespaces) × zones
+   (memory kinds) × sensors (records), with readings, an energy baseline, anomalies and a live wire; the
+   dashboard face is an 11-section health report.
+
+> **What it deliberately does not do**: no background extraction, no bridging to other memory plugins, no
+> model calls, no subprocesses, no telemetry. Uninstall it and your memory is still a pile of readable JSONL.
 
 ## New in 0.4.0: measure first, then change
 
@@ -285,7 +313,7 @@ boundary is **enforced** (8 monotonic invariants plus the `safeMode` freeze), no
 
 When a newer version exists, the top bar grows one pill (this is the real 0.3.1 → 0.3.2 case):
 
-![The `v0.3.2 可更新` pill in the top bar](assets/update-available.png)
+![The "new version available" pill in the top bar (example v0.4.1)](assets/update-available.png)
 
 ![Memory graph (horizontal)](assets/graph-lr.png)
 

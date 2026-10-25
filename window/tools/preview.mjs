@@ -78,6 +78,7 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--root') { index += 1; out.root = String(argv[index] ?? '') } else if (argv[index] === '--out') { index += 1; out.out = resolve(String(argv[index] ?? '.')) } else if (argv[index] === '--no-shot') out.shot = false
     else if (argv[index] === '--json') out.json = true
+    else if (argv[index] === '--update-demo') out.updateDemo = true
     else if (argv[index] === '--scope') {
       index += 1
       const wanted = String(argv[index] ?? '')
@@ -384,12 +385,21 @@ const livePermissions = identity === null
 // 版本状态：预览**不联网**，用本包的版本号同时当作 current 与 latest ——
 // 于是这一屏画的是"已是最新"这个真实状态，而不是编出来的"可更新"。
 const ownVersion = readOwnVersion()
+// `--update-demo` 只改这一份渲染源，用来给 README 截"顶条出现新版本牌"的样子；
+// 它不联网、不写存储，也不改变"默认截图必须是真实状态"这条规则。
+const demoLatest = (() => {
+  const parts = String(ownVersion).split('.')
+  if (parts.length !== 3) return ownVersion
+  return `${parts[0]}.${parts[1]}.${Number(parts[2]) + 1}`
+})()
+const updateDemo = options.updateDemo === true
 const source = {
   ...mirror,
   update: {
     kind: 'update', version: 1, mode: 'npm', enabled: true, package: 'dsh-anagenesis',
-    registry: 'https://registry.npmjs.org', current: ownVersion, latest: ownVersion,
-    available: false, checked: true, checkedAt: Date.now() - 90_000, error: '', nextCheckAt: 0,
+    registry: 'https://registry.npmjs.org', current: ownVersion,
+    latest: updateDemo ? demoLatest : ownVersion,
+    available: updateDemo, checked: true, checkedAt: Date.now() - 90_000, error: '', nextCheckAt: 0,
   },
   engine: { active: ['guard', 'exploit'], health: [] },
   selfStatus: { renders: 128, diagrams: 41, lastAt: Date.now() - 90_000, errors: 0, mode: 'tool' },

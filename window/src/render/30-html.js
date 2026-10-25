@@ -110,10 +110,12 @@ function barRow(spec) {
  * @param {string} title
  * @param {string} hint
  * @param {string} body
+ * @param {{ wide?: boolean }} [opts] `wide` makes the card span both grid columns
  * @returns {string}
  */
-function section(title, hint, body) {
-  return '<section class="ana-sect"><div class="ana-sect-head">'
+function section(title, hint, body, opts) {
+  const wide = opts !== undefined && opts !== null && opts.wide === true
+  return '<section class="ana-sect' + (wide ? ' ana-sect--wide' : '') + '"><div class="ana-sect-head">'
     + '<span class="ana-sect-title">' + esc(title) + '</span>'
     + (hint === '' ? '' : '<span class="ana-sect-hint">' + esc(hint) + '</span>')
     + '</div><div class="ana-sect-body">' + body + '</div></section>'

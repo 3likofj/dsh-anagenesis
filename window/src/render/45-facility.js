@@ -191,10 +191,12 @@ function gxRail(view) {
     + ' data-ana-action="' + esc(action) + '" aria-pressed="' + (active ? 'true' : 'false') + '" title="' + esc(hint) + '">'
     + gxIcon(icon) + '<span class="gx-rail-label">' + esc(label) + '</span></button>'
   return '<nav class="gx-rail" aria-label="视图切换">'
+    + '<span class="gx-rail-group" aria-hidden="true">视图</span>'
     + item('view-facility', 'floor', '平面', view === 'facility', '设施视图：楼层 / 分区 / 传感器')
     + item('view-dashboard', 'stack', '体检', view === 'dashboard', '存储体检：规模、生命周期、策略、日志')
     + item('view-graph', 'graph', '图谱', view === 'graph', '关系与流转：记忆图谱、生命周期、策略时间线')
     + '<span class="gx-rail-gap"></span>'
+    + '<span class="gx-rail-group" aria-hidden="true">操作</span>'
     + item('refresh', 'refresh', '刷新', false, '立刻重新读取一次存储')
     + item('close', 'close', '关闭', false, '关闭这个窗口（入口还在）')
     + '</nav>'
@@ -269,6 +271,10 @@ function gxCanvas(model, selection) {
     const selectedFloor = selection?.floor !== null && selection?.floor?.id === floor.id
     const code = GX_TIER_CODE[floor.tier] ?? '?'
     const zoneHtml = zones.map((zone) => gxZone(floor, zone, selectedFloor && selection.zone?.id === zone.id, sensorById)).join('')
+    // 一层的健康度 = 最差的那个分区，一眼就能看出"这层要不要管"。
+    const rank = { ok: 0, warn: 1, bad: 2 }
+    const health = zones.reduce((worst, zone) => (rank[gxZoneHealth(zone)] > rank[worst] ? gxZoneHealth(zone) : worst), 'ok')
+    const healthText = health === 'bad' ? '有异常' : health === 'warn' ? '有草稿' : '健康'
     return '<section class="gx-floor' + (selectedFloor ? ' gx-floor--on' : '') + '">'
       + '<div class="gx-floor-head">'
       + '<span class="gx-floor-no">' + String(index + 1).padStart(2, '0') + '</span>'
@@ -276,6 +282,7 @@ function gxCanvas(model, selection) {
       + '<span class="gx-floor-tag">' + esc(code) + ' · ' + esc(zhTier(floor.tier)) + '</span>'
       + '<span class="gx-floor-meta">' + gxNum(floor.live) + '/' + gxNum(floor.count) + ' 活跃　·　单条能量 '
       + (gxNum(floor.zones.reduce((sum, zone) => sum + gxNum(zone.energy), 0)) / Math.max(1, gxNum(floor.live))).toFixed(2) + '× 基线</span>'
+      + '<span class="gx-floor-health gx-floor-health--' + esc(health) + '">' + healthText + '</span>'
       + '<span class="gx-floor-bar"><i style="width:' + gxFill(floor.share).toFixed(0) + '%"></i></span>'
       + '</div>'
       + '<div class="gx-zones">' + zoneHtml + '</div>'

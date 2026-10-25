@@ -797,11 +797,15 @@ function tuningSection(ctx) {
   ]
   for (const [key, value] of Object.entries(state.params?.global ?? {})) {
     const spec = /** @type {any} */ (PARAM_ENVELOPE)[key]
-    const isDefault = spec === undefined ? undefined : Number(spec.default) === Number(value)
+    // A parameter that left the envelope (for example the removed
+    // `recall.explorationRate`) must not linger in the UI as a knob nobody
+    // reads. The journal still has the history if anyone needs it.
+    if (spec === undefined) continue
+    const isDefault = Number(spec.default) === Number(value)
     rows.push({
       label: shorten(key, 34),
-      value: spec === undefined ? String(value) : `${value}${isDefault ? ' (default)' : ` (default ${spec.default})`}`,
-      tone: isDefault === false ? 'accent' : 'dim',
+      value: `${value}${isDefault ? ' (default)' : ` (default ${spec.default})`}`,
+      tone: isDefault ? 'dim' : 'accent',
     })
   }
   if (rows.length === 3) rows.push({ label: t.label.knobs, value: t.value.envelopeDefaults, tone: 'dim' })

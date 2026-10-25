@@ -687,6 +687,17 @@ background:var(--ana-bg2);overflow:hidden}
 .ana-card--hot{border-color:var(--ana-bad);background:color-mix(in srgb,var(--ana-bad) 10%,transparent)}
 
 /* ── 分区卡片 ───────────────────────────────────────────────────────────── */
+.ana-groups{display:flex;flex-direction:column;gap:18px}
+.ana-group-head{display:flex;align-items:baseline;gap:9px;padding:0 2px 7px;
+border-bottom:1px solid var(--ana-line);margin-bottom:11px}
+.ana-group-title{position:relative;font-size:13px;font-weight:700;letter-spacing:.05em;padding-left:11px}
+.ana-group-title::before{content:"";position:absolute;left:0;top:50%;width:3px;height:12px;margin-top:-6px;
+border-radius:2px;background:var(--ana-accent)}
+.ana-group-sub{font-size:10.5px;letter-spacing:.16em;color:var(--ana-dim)}
+.ana-group-grid{columns:2;column-gap:12px}
+.ana-group-grid .ana-sect{break-inside:avoid;margin-bottom:12px}
+.ana-sect--wide{column-span:all}
+@media (max-width:1080px){.ana-group-grid{columns:1}}
 .ana-sect{margin-bottom:12px;border:1px solid var(--ana-line);border-radius:10px;background:var(--ana-bg2);overflow:hidden}
 .ana-sect-head{display:flex;align-items:baseline;gap:8px;padding:8px 12px;border-bottom:1px solid var(--ana-line)}
 .ana-sect-title{font-weight:650;font-size:13px}
@@ -871,6 +882,8 @@ font:inherit;font-size:9.5px;letter-spacing:.04em}
 .gx-rail-btn:hover{color:#E7EAF0;background:rgba(255,255,255,.07)}
 .gx-rail-btn--on{color:var(--gx-ink);background:var(--gx-yellow);font-weight:700}
 .gx-rail-label{display:block;line-height:1}
+.gx-rail-group{display:block;text-align:center;font-size:8.5px;letter-spacing:.16em;color:#5E6675;
+padding:7px 0 3px;font-weight:700}
 .gx-rail-gap{flex:1 1 auto}
 
 /* 平面图 */
@@ -897,9 +910,16 @@ justify-content:flex-end;max-width:60%}
 .gx-floor{border:1.5px solid var(--gx-ink);background:var(--gx-panel);box-shadow:3px 3px 0 rgba(15,16,20,.12);
 overflow:hidden}
 .gx-floor--on{border-color:var(--gx-blue);box-shadow:3px 3px 0 var(--gx-blue)}
-.gx-floor-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto 58px;align-items:center;gap:9px;
+.gx-floor-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto auto 58px;align-items:center;gap:9px;
 padding:5px 9px;border-bottom:1.5px solid currentColor;background:var(--gx-canvas-2)}
-.gx-floor-no{font-family:var(--gx-mono);font-size:11px;color:var(--gx-muted);font-variant-numeric:tabular-nums}
+.gx-floor-no{display:inline-flex;align-items:center;justify-content:center;width:22px;height:18px;
+background:var(--gx-ink);color:#F2F4F8;font-family:var(--gx-mono);font-size:10px;font-weight:700;
+font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.gx-floor-health{font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 6px;border-radius:999px;
+border:1px solid currentColor;white-space:nowrap;font-variant-numeric:tabular-nums}
+.gx-floor-health--ok{color:var(--gx-green)}
+.gx-floor-health--warn{color:#9A7400;background:color-mix(in srgb,var(--gx-yellow) 28%,transparent)}
+.gx-floor-health--bad{color:#fff;background:var(--gx-red);border-color:var(--gx-red)}
 .gx-floor-name{font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gx-floor-tag{font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--gx-muted);
 border:1px solid var(--gx-line-2);padding:0 5px;white-space:nowrap}
@@ -1148,10 +1168,12 @@ function barRow(spec) {
  * @param {string} title
  * @param {string} hint
  * @param {string} body
+ * @param {{ wide?: boolean }} [opts] `wide` makes the card span both grid columns
  * @returns {string}
  */
-function section(title, hint, body) {
-  return '<section class="ana-sect"><div class="ana-sect-head">'
+function section(title, hint, body, opts) {
+  const wide = opts !== undefined && opts !== null && opts.wide === true
+  return '<section class="ana-sect' + (wide ? ' ana-sect--wide' : '') + '"><div class="ana-sect-head">'
     + '<span class="ana-sect-title">' + esc(title) + '</span>'
     + (hint === '' ? '' : '<span class="ana-sect-hint">' + esc(hint) + '</span>')
     + '</div><div class="ana-sect-body">' + body + '</div></section>'
@@ -1267,6 +1289,7 @@ const PHRASE_ZH = Object.freeze([
   ['(default)', '（默认值）'],
   ['(none)', '（无）'],
   ['(empty)', '（空）'],
+  ['(no recalls yet)', '（还没有召回记录）'],
   ['(no memories yet)', '（还没有记忆）'],
   ['not available in a read-only mirror', '只读镜像下不可用'],
   ['ok — no strategy quarantined', '正常 —— 没有被隔离的策略'],
@@ -1727,6 +1750,16 @@ const SECTION_RENDERERS = Object.freeze({
   viz: (section) => plainSectionBody(section),
 })
 
+/** 窗口层的展示顺序与分组：只影响这一页，不影响模型与文本帧。 */
+const DASH_GROUPS = Object.freeze([
+  { id: 'store', title: '记忆库', sub: 'STORE', sections: ['overview', 'scope', 'lifecycle', 'kinds', 'salience'] },
+  { id: 'engine', title: '引擎', sub: 'ENGINE', sections: ['strategy', 'tuning', 'recall'] },
+  { id: 'observability', title: '观测', sub: 'OBSERVABILITY', sections: ['journal', 'viz', 'update'] },
+])
+
+/** 这些分区在宽屏上占满两列：行比较长，折成半栏会难读。 */
+const DASH_WIDE = Object.freeze(['strategy', 'salience', 'journal'])
+
 /**
  * 渲染整个仪表盘。
  * @param {any} model `buildDashboardModel()` 的产物
@@ -1746,14 +1779,28 @@ function renderDashboardHtml(model, opts) {
     out.push(emptyState('没有可展示的分区', '在配置里打开至少一个分区，或直接用 ana_dashboard'))
     return out.join('')
   }
-  for (const item of sections) {
-    // `compact` 只画关键三块：总览 / 生命周期 / 重要度排行。
-    if (options.compact === true && ['overview', 'lifecycle', 'salience'].indexOf(String(item.id)) < 0) continue
-    const render = SECTION_RENDERERS[String(item.id)]
-    const body = render === undefined ? plainSectionBody(item) : render(item)
-    out.push(section(zhSection(item.id), zhSectionHint(item.id), body))
+  const visible = sections.filter((item) => options.compact !== true || ['overview', 'lifecycle', 'salience'].indexOf(String(item.id)) >= 0)
+  // 分区按"回答什么问题"分组：库里有什么 → 它在怎么运行 → 刚才发生了什么。
+  // 分组与两列网格只发生在窗口层；`ana_dashboard` 的文本帧顺序不受影响。
+  const groups = DASH_GROUPS.map((group) => ({
+    ...group,
+    items: visible.filter((item) => group.sections.indexOf(String(item.id)) >= 0),
+  })).filter((group) => group.items.length > 0)
+  const grouped = new Set(groups.flatMap((group) => group.items.map((item) => item.id)))
+  const rest = visible.filter((item) => !grouped.has(item.id))
+  if (rest.length > 0) groups.push({ id: 'other', title: '其它', sub: 'OTHER', items: rest })
+  for (const group of groups) {
+    const cards = group.items.map((item) => {
+      const render = SECTION_RENDERERS[String(item.id)]
+      const body = render === undefined ? plainSectionBody(item) : render(item)
+      return section(zhSection(item.id), zhSectionHint(item.id), body, { wide: DASH_WIDE.indexOf(String(item.id)) >= 0 })
+    })
+    out.push('<section class="ana-group" data-group="' + esc(group.id) + '">'
+      + '<div class="ana-group-head"><span class="ana-group-title">' + esc(group.title) + '</span>'
+      + '<span class="ana-group-sub">' + esc(group.sub) + '</span></div>'
+      + '<div class="ana-group-grid">' + cards.join('') + '</div></section>')
   }
-  return out.join('')
+  return '<div class="ana-groups">' + out.join('') + '</div>'
 }
 
 /**
@@ -1982,10 +2029,12 @@ function gxRail(view) {
     + ' data-ana-action="' + esc(action) + '" aria-pressed="' + (active ? 'true' : 'false') + '" title="' + esc(hint) + '">'
     + gxIcon(icon) + '<span class="gx-rail-label">' + esc(label) + '</span></button>'
   return '<nav class="gx-rail" aria-label="视图切换">'
+    + '<span class="gx-rail-group" aria-hidden="true">视图</span>'
     + item('view-facility', 'floor', '平面', view === 'facility', '设施视图：楼层 / 分区 / 传感器')
     + item('view-dashboard', 'stack', '体检', view === 'dashboard', '存储体检：规模、生命周期、策略、日志')
     + item('view-graph', 'graph', '图谱', view === 'graph', '关系与流转：记忆图谱、生命周期、策略时间线')
     + '<span class="gx-rail-gap"></span>'
+    + '<span class="gx-rail-group" aria-hidden="true">操作</span>'
     + item('refresh', 'refresh', '刷新', false, '立刻重新读取一次存储')
     + item('close', 'close', '关闭', false, '关闭这个窗口（入口还在）')
     + '</nav>'
@@ -2060,6 +2109,10 @@ function gxCanvas(model, selection) {
     const selectedFloor = selection?.floor !== null && selection?.floor?.id === floor.id
     const code = GX_TIER_CODE[floor.tier] ?? '?'
     const zoneHtml = zones.map((zone) => gxZone(floor, zone, selectedFloor && selection.zone?.id === zone.id, sensorById)).join('')
+    // 一层的健康度 = 最差的那个分区，一眼就能看出"这层要不要管"。
+    const rank = { ok: 0, warn: 1, bad: 2 }
+    const health = zones.reduce((worst, zone) => (rank[gxZoneHealth(zone)] > rank[worst] ? gxZoneHealth(zone) : worst), 'ok')
+    const healthText = health === 'bad' ? '有异常' : health === 'warn' ? '有草稿' : '健康'
     return '<section class="gx-floor' + (selectedFloor ? ' gx-floor--on' : '') + '">'
       + '<div class="gx-floor-head">'
       + '<span class="gx-floor-no">' + String(index + 1).padStart(2, '0') + '</span>'
@@ -2067,6 +2120,7 @@ function gxCanvas(model, selection) {
       + '<span class="gx-floor-tag">' + esc(code) + ' · ' + esc(zhTier(floor.tier)) + '</span>'
       + '<span class="gx-floor-meta">' + gxNum(floor.live) + '/' + gxNum(floor.count) + ' 活跃　·　单条能量 '
       + (gxNum(floor.zones.reduce((sum, zone) => sum + gxNum(zone.energy), 0)) / Math.max(1, gxNum(floor.live))).toFixed(2) + '× 基线</span>'
+      + '<span class="gx-floor-health gx-floor-health--' + esc(health) + '">' + healthText + '</span>'
       + '<span class="gx-floor-bar"><i style="width:' + gxFill(floor.share).toFixed(0) + '%"></i></span>'
       + '</div>'
       + '<div class="gx-zones">' + zoneHtml + '</div>'

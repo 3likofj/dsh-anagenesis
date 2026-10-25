@@ -64,6 +64,7 @@ const PHRASE_ZH = Object.freeze([
   ['(default)', '（默认值）'],
   ['(none)', '（无）'],
   ['(empty)', '（空）'],
+  ['(no recalls yet)', '（还没有召回记录）'],
   ['(no memories yet)', '（还没有记忆）'],
   ['not available in a read-only mirror', '只读镜像下不可用'],
   ['ok — no strategy quarantined', '正常 —— 没有被隔离的策略'],
@@ -524,6 +525,16 @@ const SECTION_RENDERERS = Object.freeze({
   viz: (section) => plainSectionBody(section),
 })
 
+/** 窗口层的展示顺序与分组：只影响这一页，不影响模型与文本帧。 */
+const DASH_GROUPS = Object.freeze([
+  { id: 'store', title: '记忆库', sub: 'STORE', sections: ['overview', 'scope', 'lifecycle', 'kinds', 'salience'] },
+  { id: 'engine', title: '引擎', sub: 'ENGINE', sections: ['strategy', 'tuning', 'recall'] },
+  { id: 'observability', title: '观测', sub: 'OBSERVABILITY', sections: ['journal', 'viz', 'update'] },
+])
+
+/** 这些分区在宽屏上占满两列：行比较长，折成半栏会难读。 */
+const DASH_WIDE = Object.freeze(['strategy', 'salience', 'journal'])
+
 /**
  * 渲染整个仪表盘。
  * @param {any} model `buildDashboardModel()` 的产物
@@ -543,14 +554,28 @@ function renderDashboardHtml(model, opts) {
     out.push(emptyState('没有可展示的分区', '在配置里打开至少一个分区，或直接用 ana_dashboard'))
     return out.join('')
   }
-  for (const item of sections) {
-    // `compact` 只画关键三块：总览 / 生命周期 / 重要度排行。
-    if (options.compact === true && ['overview', 'lifecycle', 'salience'].indexOf(String(item.id)) < 0) continue
-    const render = SECTION_RENDERERS[String(item.id)]
-    const body = render === undefined ? plainSectionBody(item) : render(item)
-    out.push(section(zhSection(item.id), zhSectionHint(item.id), body))
+  const visible = sections.filter((item) => options.compact !== true || ['overview', 'lifecycle', 'salience'].indexOf(String(item.id)) >= 0)
+  // 分区按"回答什么问题"分组：库里有什么 → 它在怎么运行 → 刚才发生了什么。
+  // 分组与两列网格只发生在窗口层；`ana_dashboard` 的文本帧顺序不受影响。
+  const groups = DASH_GROUPS.map((group) => ({
+    ...group,
+    items: visible.filter((item) => group.sections.indexOf(String(item.id)) >= 0),
+  })).filter((group) => group.items.length > 0)
+  const grouped = new Set(groups.flatMap((group) => group.items.map((item) => item.id)))
+  const rest = visible.filter((item) => !grouped.has(item.id))
+  if (rest.length > 0) groups.push({ id: 'other', title: '其它', sub: 'OTHER', items: rest })
+  for (const group of groups) {
+    const cards = group.items.map((item) => {
+      const render = SECTION_RENDERERS[String(item.id)]
+      const body = render === undefined ? plainSectionBody(item) : render(item)
+      return section(zhSection(item.id), zhSectionHint(item.id), body, { wide: DASH_WIDE.indexOf(String(item.id)) >= 0 })
+    })
+    out.push('<section class="ana-group" data-group="' + esc(group.id) + '">'
+      + '<div class="ana-group-head"><span class="ana-group-title">' + esc(group.title) + '</span>'
+      + '<span class="ana-group-sub">' + esc(group.sub) + '</span></div>'
+      + '<div class="ana-group-grid">' + cards.join('') + '</div></section>')
   }
-  return out.join('')
+  return '<div class="ana-groups">' + out.join('') + '</div>'
 }
 
 /**
