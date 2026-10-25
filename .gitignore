@@ -12,6 +12,7 @@ PROJECT-STATE.md
 
 # 离线渲染预览：`node window/tools/preview.mjs` 的产物（HTML + 截图）
 window/.preview/
+window/.preview-update/
 
 # 取色用的参考缩略图（Kombai 采样用，已用完；只作本地留档）
 .preview-ref/
