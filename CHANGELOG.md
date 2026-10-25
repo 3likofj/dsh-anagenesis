@@ -3,6 +3,85 @@
 本文件记录每次发布的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] — 2026-10-25
+
+> **先量，再改。** 这一版不加工具、不加依赖，改的是检索与写入的质量：
+> 相关性门槛、真正的 MMR、图检索、取代语义、调参闭环，以及一份可以复跑的离线检索基准。
+>
+> 存储 **v7 → v8**（只加 `confirmedAt`，自动迁移、幂等、旧 journal 可重放）。
+> 行为有变化：**相关性不足的记忆不再为了填满预算而注入** —— 召回结果可能比以前"少"，
+> 那是真的没有相关内容。`ana_recall` 的 `excluded` 会说明排除了谁、为什么。
+
+### 新增
+
+- **离线检索基准**（`bench/`，`npm run bench`）：211 条确定性合成记忆（两个项目 + 全局 + 会话、
+  中英混合、近重复、取代链、跨项目冲突、180 条干扰项）× 41 条带 gold 的查询，
+  指标 nDCG@10 / MRR / Recall@5 / Precision@5 / 污染率 / 作用域泄漏 / tokens-per-relevant。
+  `bench/baseline.json` 是回归闸门：任何一项明显变差都会 exit 1。
+- **相关性门槛**：绝对floor（`recall.minRelevance`，可调）+ 相对floor（必须达到最佳候选的 45%）。
+  按 intent 缩放（`orient`/`verify` 更宽，`recall_fact`/`reuse_procedure` 更严），空查询（简报）不受限。
+- **`confirmedAt`（schema v8）**：记录"上一次被确认"的时间；提升/锁定会刷新，`link`/`retag` 不会。
+  时间衰减改读它 —— 以前连一条线就能让半年前的信念看起来"新鲜"。
+- **图检索**：`buildIndex` 产出反向边；召回在门槛之后做 1 跳扩展（最多 12 个种子、最多救回 6 条、
+  固定类型权重）。`supports`/`part_of`/`caused_by`/`derived_from`/`superseded_by` 可救回被相关性门槛挡掉的记录，
+  `related` 只在本身有词法相关时救回，`supersedes` 权重为 0（不把旧信念拖回来）。
+  输出带理由链（`graph ← caused_by mem_x`）与 `graph.revived` 计数；`request.graphExpansion=false` 可关闭。
+- **`ana_remember` 近重复提示**：返回同命名空间 top-3 相似记录 + `suggestedAction`
+  （supersede / merge / link）。只是提示，**从不自动改写**。
+- **`ana_remember supersedes: [id...]`**：一次事务里写入新记录 + 旧记录的 `supersededBy` + 两侧 links；
+  拒绝未知 id、跨命名空间、retired 源。
+- **`ana_recall excluded`**：按原因计数 + 最强 3 条近失（`why` = below-relevance-floor / below-top-relevance），
+  `includeSuperseded: true` 可显式查看被取代的历史。
+- **`status().lifecycle`**：根据 `ana_feedback` 的 hits/misses 给出可提升/可降级建议。
+- **日志完整性**：`status().journal.health` 报告被跳过的坏行（tornLines）与 seq 空洞（gaps）。
+
+### 变更
+
+- 词法分从原始 Okapi BM25 改为 **IDF 加权覆盖率**：词表内覆盖率用于排序，含未知词的覆盖率用于门槛。
+  未知词不再被当成"没说过"，也不会让一条只匹配到"怎么/配置"的记录看起来完全相关。
+- 向量项从 `(cos+1)/2` 改为 `max(0, cos)`：原先每条记录白拿 0.5 的语义底分（实测无关文本映射后 0.518）。
+- MMR 改为短名单（120 条）内的真迭代重排；预算放不下的候选移出池，而不是原地卡住后面的候选。
+- 跨项目降权只作用于**先验项**（时间/置信/显著度/作用域），不再把相关性一起压掉 ——
+  `crossProject: true` 终于能在本项目无相关经验时真的看到外项目经验。
+- 倒排索引缓存按 `state.memories` 对象身份键接线：审计写（每次 recall 都会写一条）不再让缓存失效。
+- `ana_link rel=supersedes` 双写两侧，并拒绝自环、跨命名空间、互相取代；重复 link 幂等。
+- 调参闭环：`observe` 把评估窗口内的样本记到最近一次变更的臂上（一次 pull 一个窗口均值）；
+  `apply` 在上一次变更未被评估前拒绝再改（`force` 可越过）；`evaluate` 只比较变更之后的样本。
+  删除从未被消费的 `recall.explorationRate`。
+- `write.admissionThreshold` 接线：显式 confidence 低于门槛时写入落 `draft`（返回 `downgraded`）；
+  省略 confidence 时保持策略决定。
+- `promote.hitRateThreshold` / `demote.missRateThreshold` 接线：驱动 `status().lifecycle` 建议。
+- 停止词只用于词法索引/查询；`tokenize()` 与已存储的 embedding 空间保持不变（无需 reembed）。
+
+### 修复
+
+- 每次召回都重建全库倒排索引（`indexCache` 声明了但从未被传入；HANDOFF 里"按 version 记忆化"的说法因此不成立）。
+- 被取代的旧信念与替代者一起被注入；`supersedes` / `supersededBy` 字段此前从未被写入。
+- 无关查询也会灌满 token 预算（旧实现没有任何相关性下限）。
+
+### 基准（同一份语料，0.3.2 → 0.4.0）
+
+| 指标 | 0.3.2 | 0.4.0 |
+|---|---|---|
+| nDCG@10 | 0.903 | **0.974** |
+| MRR | 0.780 | **0.854** |
+| Recall@5 | 0.963 | **1.000** |
+| Precision@5 | 0.180 | **0.809** |
+| 污染率（注入但无关） | 0.908 | **0.193** |
+| 平均注入条数 / 查询 | 11.6 | **1.6** |
+| tokens / 相关条 | 627 | **162** |
+| 无关查询注入条数 | 8.3 | **0.0** |
+| `crossProject: true` 命中 | 0 | **1.0** |
+
+> 这是**合成、确定性**的离线语料，不是真实会话的替代品；它的用途是让每一次评分改动都能被复跑、
+> 被对比、被回退。
+
+### 破坏性说明
+
+- 存储 v7 → v8：启动时自动迁移，旧 journal 重放后也会回填 `confirmedAt`。
+- `recall.explorationRate` 从可调 envelope 中删除（它从未产生任何效果）。
+- 召回结果会变少：相关性不足不再注入。需要"看看库里有什么"时用 `ana_list`。
+
 ## [0.3.2] — 2026-10-25
 
 > 修 0.3.1 的一个**功能未生效**缺陷：版本检查跑起来了，但结果到不了界面。

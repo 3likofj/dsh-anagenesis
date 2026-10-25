@@ -19,6 +19,49 @@
 
 ![The anagenesis desktop window — the facility floorplan (default face)](assets/facility.png)
 
+## New in 0.4.0: measure first, then change
+
+No new tools and no new dependencies. This release is about **whether every injected token earns its
+place**. Storage moves to **v8** (automatic migration, one added field).
+
+| Change | Before | Now |
+|---|---|---|
+| Relevance floor | none: the budget was always filled | absolute + relative floors, scaled per intent; empty-query briefings are exempt |
+| Lexical score | raw BM25 (longer records win) | IDF-weighted coverage: in-vocabulary coverage ranks, full coverage gates |
+| Vector term | `(cos+1)/2`: every record collected 0.5 | `max(0, cos)`: unrelated is 0 |
+| Redundancy | sort once, then subtract a penalty | real MMR over a bounded shortlist; a candidate that does not fit leaves the pool |
+| `links` | drawn in the graph, never used in retrieval | one-hop expansion: `supports`/`part_of`/`caused_by` can rescue context the gates dropped |
+| Supersession | `supersedes` was never written | `ana_link rel=supersedes` writes both sides; replaced beliefs are no longer injected (`includeSuperseded` shows history) |
+| Time decay | read `updatedAt` (linking a record made it "fresh") | reads `confirmedAt` (promotion/lock counts as confirmation) |
+| Writes | exact-string dedupe only | near-duplicate top-3 + suggested action; `supersedes: [id...]` consolidates in one transaction |
+| Meta-tuning | four knobs with no consumer | every knob wired or removed; rewards come from the post-change window; one change in flight |
+| Recall output | rejection counts only | `excluded`: counts by reason + the three strongest near misses with `why` |
+
+### Benchmark (same corpus, 0.3.2 → 0.4.0)
+
+211 deterministic synthetic memories × 41 queries with gold answers, covering exact / paraphrase / graph /
+supersession / scope / no-relevant-record cases:
+
+| Metric | 0.3.2 | 0.4.0 |
+|---|---|---|
+| nDCG@10 | 0.903 | **0.974** |
+| MRR | 0.780 | **0.854** |
+| Recall@5 | 0.963 | **1.000** |
+| Precision@5 | 0.180 | **0.809** |
+| Contamination (injected but irrelevant) | 0.908 | **0.193** |
+| Records injected per query | 11.6 | **1.6** |
+| Tokens per relevant record | 627 | **162** |
+| Records injected for a no-match query | 8.3 | **0.0** |
+| `crossProject: true` hits | 0 | **1.0** |
+
+`npm run bench` reproduces it; `bench/baseline.json` is the regression gate. The corpus is synthetic and
+deterministic — not a substitute for real sessions, but it makes every scoring change comparable and revertible.
+
+**Upgrade note (behaviour change)**: storage v7 → v8 migrates automatically; **records that are not relevant
+are no longer injected just to fill the budget**, so recall may return less — that is the honest answer, and
+`ana_recall`'s `excluded` report says who was left out and why. `recall.explorationRate` was removed (it never
+had any effect).
+
 ## New in 0.3.0: one package, and a facility floorplan
 
 Two things this release: **the two plugins became one** (the window is no longer a sibling package you
@@ -75,8 +118,9 @@ so the new tool layering loads.
   revertibility in the **counter**.
 - **Physical isolation without breaking old data**: every namespace owns its live and archive segments, while the
   global namespace keeps the original unprefixed names, so a store written before 0.2.0 loads unchanged.
-- **Falsifiable claims**: 95 core tests + 87 window tests + a 96-check boot sandbox that runs the real Cordis,
-  the real `defineTool` and the real preset registry — the real row code, not a mock of it.
+- **Falsifiable claims**: 150 core tests + 91 window tests + a 98-check boot sandbox that runs the real
+  Cordis, the real `defineTool` and the real preset registry + a reproducible offline retrieval benchmark —
+  the real row code, not a mock of it.
 
 ## What it is, in three lines
 

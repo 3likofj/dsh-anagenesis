@@ -133,6 +133,7 @@ const SECTION_ZH = Object.freeze({
   strategy: '策略栈',
   tuning: '自调节',
   journal: '日志尾部',
+  recall: '召回质量',
   salience: '重要度排行',
   viz: '渲染器状态',
   update: '版本更新',
@@ -147,6 +148,7 @@ const SECTION_HINT_ZH = Object.freeze({
   strategy: '当前生效的注入策略栈与健康度',
   tuning: '元层自己调过的参数；偏离默认值的会被点亮',
   journal: '最近发生的操作，倒序',
+  recall: '最近几次召回注入了多少、丢了什么、主要是被什么挡掉的',
   salience: '按重要度排序的记忆，含类型与状态',
   viz: '这个渲染器自己的运转情况',
   update: '这个插件自己的版本，以及 npm 上有没有新版本',
@@ -1249,6 +1251,13 @@ const DASH_LABEL_ZH = Object.freeze({
   'latest version': '最新版本',
   update: '更新',
   'last checked': '上次检查',
+  // 召回质量分区（0.4.0）：同样是模型给的英文标签。
+  recalls: '召回次数',
+  selected: '注入',
+  dropped: '丢弃',
+  tokens: 'token',
+  'blocked by': '主要排除原因',
+  '(no recalls yet)': '（还没有召回记录）',
 })
 
 /** 通用短语替换：嵌在自由文本里的固定说法。 */
@@ -1713,6 +1722,7 @@ const SECTION_RENDERERS = Object.freeze({
   strategy: (section) => strategySectionBody(section),
   tuning: (section) => tuningSectionBody(section),
   journal: (section) => journalSectionBody(section),
+  recall: (section) => plainSectionBody(section),
   salience: (section) => salienceSectionBody(section),
   viz: (section) => plainSectionBody(section),
 })

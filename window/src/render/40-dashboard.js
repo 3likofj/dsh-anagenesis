@@ -48,6 +48,13 @@ const DASH_LABEL_ZH = Object.freeze({
   'latest version': '最新版本',
   update: '更新',
   'last checked': '上次检查',
+  // 召回质量分区（0.4.0）：同样是模型给的英文标签。
+  recalls: '召回次数',
+  selected: '注入',
+  dropped: '丢弃',
+  tokens: 'token',
+  'blocked by': '主要排除原因',
+  '(no recalls yet)': '（还没有召回记录）',
 })
 
 /** 通用短语替换：嵌在自由文本里的固定说法。 */
@@ -512,6 +519,7 @@ const SECTION_RENDERERS = Object.freeze({
   strategy: (section) => strategySectionBody(section),
   tuning: (section) => tuningSectionBody(section),
   journal: (section) => journalSectionBody(section),
+  recall: (section) => plainSectionBody(section),
   salience: (section) => salienceSectionBody(section),
   viz: (section) => plainSectionBody(section),
 })

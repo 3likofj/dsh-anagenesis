@@ -600,6 +600,11 @@ export async function apply(ctx, config = {}) {
         dropped: result.dropped,
         tokens: result.tokenCost,
         strategy: result.strategy,
+        // Why the rest was dropped, and how much the graph contributed: the
+        // dashboard's recall section reads these two fields straight out of the
+        // audit trail instead of keeping a second, drifting telemetry buffer.
+        rejected: result.rejected,
+        graph: result.graph,
         scope: {
           projectId: context.identity.id,
           namespace: context.namespace,

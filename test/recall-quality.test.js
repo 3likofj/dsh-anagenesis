@@ -170,3 +170,21 @@ test('recall quality: pack never mutates a score to make room for a worse record
   assert.deepEqual(selected.map((row) => row.record.id), ['x'])
   assert.equal(rows[1].score, 0.2, 'a dropped candidate keeps its own score')
 })
+
+test('recall quality: the exclusion report names the strongest near miss and why', async () => {
+  const store = makeStore([
+    makeRecord('a', { kind: 'fact', subject: 'cache invalidation uses a version counter', body: 'bump the counter on every write', confidence: 0.9 }),
+    makeRecord('b', { kind: 'fact', subject: 'the cache is warmed after deploy', body: 'unrelated but shares one word', confidence: 0.9 }),
+  ])
+  const result = await recall(store, { intent: 'recall_fact', query: 'cache invalidation version counter' }, {
+    context: contextFor(),
+    now: () => NOW,
+  })
+  assert.deepEqual(result.selected.map((row) => row.id), ['a'])
+  assert.equal(result.excluded.returned, 1)
+  assert.equal(result.excluded.nearMisses.length, 1)
+  assert.equal(result.excluded.nearMisses[0].id, 'b')
+  assert.equal(result.excluded.nearMisses[0].why, 'below-relevance-floor')
+  assert.match(result.excluded.nearMisses[0].gist, /cache is warmed/)
+  assert.ok(result.excluded.summary.relevance >= 1)
+})

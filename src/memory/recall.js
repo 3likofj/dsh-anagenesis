@@ -525,6 +525,7 @@ export async function recall(store, request = {}, opts = {}) {
       rejected.relevance++
       // Kept, not dropped: a strong seed can still point at it through a typed
       // link, and that is the whole reason the graph exists.
+      scored.excludedBy = 'relevance'
       gated.push(scored)
       continue
     }
@@ -542,6 +543,7 @@ export async function recall(store, request = {}, opts = {}) {
       else {
         // Same as the absolute floor: a record that is merely weaker than the
         // best hit is not garbage — a strong seed may still point at it.
+        row.excludedBy = 'relative'
         gated.push(row)
         rejected.relevanceRelative += 1
       }
@@ -554,6 +556,24 @@ export async function recall(store, request = {}, opts = {}) {
   // (so MMR and the token budget still decide what fits).
   const graph = expandByLinks(scoredPool, gated, index, plan)
   if (graph.revived.length > 0) scoredPool = [...scoredPool, ...graph.revived]
+  // Near misses: what the relevance gates excluded, strongest first. This is
+  // the answer to "why is my memory empty" that the old result could not give —
+  // it only had counts. Three is a deliberate cap: the report is a diagnostic,
+  // not a second injection.
+  const revivedIds = new Set(graph.revived.map((row) => row.record.id))
+  const nearMisses = [...gated]
+    .filter((row) => !revivedIds.has(row.record.id))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((row) => ({
+      id: row.record.id,
+      kind: row.record.kind,
+      state: row.record.state,
+      gist: String(row.record.gist ?? '').slice(0, 100),
+      score: Number(row.score.toFixed(4)),
+      relevance: Number(row.relevance.toFixed(3)),
+      why: row.excludedBy === 'relative' ? 'below-top-relevance' : 'below-relevance-floor',
+    }))
   const packed = pack(scoredPool, plan, now, engine)
   // Conflict detection runs on what was *selected*, and its only effect is on
   // the projection: the cross-project record's effective confidence is halved,
@@ -600,6 +620,9 @@ export async function recall(store, request = {}, opts = {}) {
     // dropped. Zero is a valid, common answer; it is reported so "the graph did
     // nothing" and "the graph is not wired" stay distinguishable.
     graph: { revived: graph.revived.length, edges: graph.edges },
+    // The exclusion report (fenced item, now authorized): counts by reason plus
+    // the three strongest near misses. `rejected` stays for compatibility.
+    excluded: { summary: { ...rejected }, nearMisses, returned: packed.selected.length },
     conflicts,
     trace: packed.selected.map((row) => ({ id: row.record.id, parts: row.parts })),
   }

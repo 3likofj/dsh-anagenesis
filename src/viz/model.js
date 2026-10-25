@@ -40,7 +40,7 @@ import { DEFAULT_REDACTION, redactRecord, redactionNote } from './redact.js'
 import { terminalText } from './lang.js'
 
 export const DASHBOARD_SECTIONS = Object.freeze([
-  'overview', 'scope', 'lifecycle', 'kinds', 'strategy', 'tuning', 'journal', 'salience', 'viz',
+  'overview', 'scope', 'lifecycle', 'kinds', 'strategy', 'tuning', 'journal', 'recall', 'salience', 'viz',
 ])
 
 export const DIAGRAM_KINDS = Object.freeze(['memory-graph', 'strategy-timeline', 'lifecycle'])
@@ -111,6 +111,7 @@ export function buildDashboardModel(source, opts = {}) {
     strategy: strategySection,
     tuning: tuningSection,
     journal: journalSection,
+    recall: recallSection,
     salience: salienceSection,
     viz: vizSection,
     update: updateSection,
@@ -825,6 +826,53 @@ function journalSection(ctx) {
     })
   }
   return { id: 'journal', title: t.section.journal(events.length), rows }
+}
+
+/**
+ * Recall quality, read straight from the audit trail.
+ *
+ * Every `recall()` already journals one audit row with what it selected, what it
+ * dropped and how many tokens it spent (`src/index.js`), so this section needs
+ * no telemetry buffer and no extra write: the journal *is* the source. That also
+ * means a read-only mirror shows the same numbers as the live service.
+ * @param {any} ctx
+ * @returns {any}
+ */
+function recallSection(ctx) {
+  const { state, t } = ctx
+  const recalls = (state.audit ?? []).filter((row) => row?.type === 'recall').slice(-10).reverse()
+  /** @type {any[]} */
+  const rows = []
+  if (recalls.length === 0) {
+    rows.push({ label: t.label.recalls, value: t.label.noRecalls, tone: 'dim' })
+    return { id: 'recall', title: t.section.recall(0), rows }
+  }
+  const total = recalls.reduce((sum, row) => sum + Number(row.detail?.selected ?? 0), 0)
+  const dropped = recalls.reduce((sum, row) => sum + Number(row.detail?.dropped ?? 0), 0)
+  const tokens = recalls.reduce((sum, row) => sum + Number(row.detail?.tokens ?? 0), 0)
+  rows.push({ label: t.label.recalls, value: `${recalls.length} · ${total} ${t.label.selected} / ${dropped} ${t.label.dropped}` })
+  rows.push({ label: t.label.tokens, value: `${Math.round(tokens / recalls.length)} avg` })
+  // The strongest rejection reason across the window: the answer to "why is
+  // recall returning so little", which used to require reading raw audit rows.
+  /** @type {Record<string, number>} */
+  const blocked = {}
+  for (const row of recalls) {
+    for (const [reason, count] of Object.entries(row.detail?.rejected ?? {})) {
+      if (Number(count) > 0) blocked[reason] = (blocked[reason] ?? 0) + Number(count)
+    }
+  }
+  const top = Object.entries(blocked).sort((a, b) => b[1] - a[1])[0]
+  rows.push({ label: t.label.blocked, value: top === undefined ? '-' : `${top[0]} × ${top[1]}`, tone: top === undefined ? 'dim' : 'warn' })
+  for (const row of recalls) {
+    const detail = row.detail ?? {}
+    const selected = Number(detail.selected ?? 0)
+    rows.push({
+      label: `#${row.id ?? '?'}`,
+      value: `${shorten(detail.intent ?? '?', 16)} · ${selected} sel · ${Number(detail.dropped ?? 0)} drop · ${Number(detail.tokens ?? 0)} tok`,
+      tone: selected === 0 ? 'warn' : 'dim',
+    })
+  }
+  return { id: 'recall', title: t.section.recall(recalls.length), rows }
 }
 
 /** @param {any} ctx @returns {any} */

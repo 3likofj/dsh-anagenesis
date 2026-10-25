@@ -138,7 +138,11 @@ export function buildReadTools(deps) {
       + '**默认只召回当前项目与全局作用域的记忆**；其它项目的记忆需要显式传 crossProject: true，'
       + '而且回来时会被降权、逐条标注，请勿盲从。'
       + '返回一个已按 maxTokens 裁剪好的 <anagenesis-memory> 块，紧跟一段 <anagenesis-pulse>（当前项目/档位/权限）；'
-      + '真正用上的 id 记得在 ana_feedback 里引用。',
+      + '真正用上的 id 记得在 ana_feedback 里引用。'
+      + '**只注入与查询相关的东西**：相关性不足的候选不会为了填满预算而被塞进来，'
+      + 'excluded 会报告排除了谁、为什么（below-relevance-floor / below-top-relevance）。'
+      + '被取代的旧信念默认不注入；需要看历史时传 includeSuperseded: true。'
+      + '强命中的记录可以沿 typed links 带出 1 跳上下文（graph.revived 告诉你带出了几条）。',
     parameters: {
       intent: { type: 'string', required: true, enum: Object.keys(INTENTS), description: '你接下来要做什么。orient=任务开始，recall_fact=回答一个事实问题，recall_precedent=以前是怎么处理的，avoid_mistake=已知的失败，reuse_procedure=验证过的步骤，verify=目前真正站得住的东西，contrast=一个有争议信念的两面。' },
       query: { type: 'string', description: '用你自己的话写要匹配什么。可选：只给 intent 也说得通。' },
@@ -150,6 +154,7 @@ export function buildReadTools(deps) {
       scope: { type: 'json', description: '{"session": id, "workspace": path, "preset": id}，用于纳入当前会话/工作区的作用域（不会扩大到其它项目）。' },
       crossProject: { type: 'boolean', description: '显式授权：把**其它项目**的记忆也纳入候选。它们会被降权并逐条标注。只有在"本项目没有相关经验、但想参考别处"时才传 true。' },
       authorizeReason: { type: 'string', description: 'crossProject: true 的理由，写进审计轨迹。' },
+      includeSuperseded: { type: 'boolean', description: '把已被取代的旧记忆也纳入（默认关）。替代当前判断时不要开。' },
       limit: { type: 'integer', description: '最多注入多少条记录。' },
     },
     output: output({
@@ -164,6 +169,8 @@ export function buildReadTools(deps) {
       memoryTokens: { type: 'integer', description: '其中记忆块本身的 token 数 —— maxTokens 预算管的是这个数。' },
       strategy: { type: 'array', items: { type: 'string' }, description: '产生这个结果的策略栈。' },
       rejected: { type: 'json', description: '候选项被丢弃的原因，按原因归类（scope 一项就是被作用域隔离挡掉的数量）。' },
+      excluded: { type: 'json', description: '排除了谁：summary=按原因计数，nearMisses=最接近但仍被相关性门槛挡掉的 3 条（含 why）。' },
+      graph: { type: 'json', description: '图扩展结果：edges=命中的边数，revived=仅靠链接救回来的记录数。' },
     }),
     execute: async (args, exec) => {
       const result = await service().recall({
@@ -176,6 +183,7 @@ export function buildReadTools(deps) {
         timeframe: args.timeframe,
         scope: args.scope,
         limit: args.limit,
+        includeSuperseded: args.includeSuperseded === true,
       }, {
         scope: agentScope(exec),
         exec,
@@ -197,6 +205,8 @@ export function buildReadTools(deps) {
         memoryTokens: result.memoryTokens,
         strategy: result.strategy,
         rejected: result.rejected,
+        excluded: result.excluded,
+        graph: result.graph,
       }
     },
   }))
@@ -237,7 +247,9 @@ export function buildReadTools(deps) {
       name: 'ana_audit',
       description: '查看你自己的记忆与 anagenesis 机制：当前状态（含当前项目、档位与权限）、日志尾部、审计轨迹、'
         + '某条记忆及其连线和 provenance，或者某个策略。用它回答“我为什么相信这个”，也用它找到'
-        + '回滚调用所需的 seq。查看别的项目的记忆需要显式 crossProject: true。',
+        + '回滚调用所需的 seq。查看别的项目的记忆需要显式 crossProject: true。'
+        + 'view=status 里还包含：lifecycle=可提升/可降级建议（来自 ana_feedback 的引用率）、'
+        + 'journal.health=被跳过的坏行数与日志 seq 空洞、tuning.evaluation=上一次调参是否真的更好。',
       parameters: {
         view: { type: 'string', required: true, enum: ['status', 'journal', 'audit', 'memory', 'strategies', 'health', 'scope'], description: '要看什么。view=scope 专门看作用域与项目清单。' },
         id: { type: 'string', description: 'view=memory 时是记忆 id，view=strategies 时是策略 id。' },
@@ -535,9 +547,10 @@ export function buildReadTools(deps) {
     tools.push(defineTool({
       name: 'ana_tune',
       description: '第 3 层：依据观察到的结果调整你自己的策略参数，然后验证、必要时回滚。'
-        + 'propose=只给建议（不写入），apply=提交一处受约束的改动（admin 档位），evaluate=与上一次调参做对比，'
-        + 'rollback=按 auditId 撤销一次已应用的改动（admin 档位），report=当前指标。每个旋钮都被钳制在声明好的 envelope 内，'
-        + 'safeMode 会完全冻结这个工具。',
+        + 'propose=只给建议（不写入，样本不足时也会回答，但 rationale 会说明），apply=提交一处受约束的改动（admin 档位），'
+        + 'evaluate=只比较变更之后的反馈样本，rollback=按 auditId 撤销一次已应用的改动（admin 档位），report=当前指标。'
+        + '**一次只允许一个在飞变更**：上一次还没收满 5 条反馈时，apply 会被拒绝（force 可越过）。'
+        + '每个旋钮都被钳制在声明好的 envelope 内，safeMode 会完全冻结这个工具。',
       parameters: {
         action: { type: 'string', required: true, enum: ['propose', 'apply', 'evaluate', 'rollback', 'report'], description: '要做什么。' },
         objective: { type: 'string', enum: OBJECTIVES, description: '优化哪个信号：utilization、precision、token_efficiency、task_success。' },
