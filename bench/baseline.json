@@ -1,18 +1,18 @@
 {
-  "generatedAt": "2026-10-25T14:06:30.256Z",
+  "generatedAt": "2026-10-25T14:11:17.426Z",
   "corpus": {
     "records": 211,
     "queries": 41
   },
   "overall": {
-    "ndcg10": 0.9593686405421972,
+    "ndcg10": 0.973849085781484,
     "mrr": 0.8536585365853658,
-    "recall5": 0.9861111111111112,
-    "precision5": 0.7902439024390243,
-    "contamination": 0.2119628339140534,
+    "recall5": 1,
+    "precision5": 0.809349593495935,
+    "contamination": 0.19285714285714284,
     "leaks": 0,
-    "tokensPerRelevant": 164.69444444444446,
-    "selected": 1.6097560975609757,
+    "tokensPerRelevant": 161.55092592592592,
+    "selected": 1.6341463414634145,
     "queries": 41
   },
   "buckets": {
@@ -42,22 +42,22 @@
       "ndcg10": 0.9846220730654774,
       "mrr": 0.9791666666666666,
       "recall5": 1,
-      "precision5": 0.8013888888888889,
-      "contamination": 0.20238095238095236,
+      "precision5": 0.8097222222222222,
+      "contamination": 0.19404761904761902,
       "leaks": 0,
-      "tokensPerRelevant": 171.45833333333334,
-      "selected": 1.875,
+      "tokensPerRelevant": 170.04166666666666,
+      "selected": 1.8333333333333333,
       "queries": 24
     },
     "graph": {
-      "ndcg10": 0.27541155237618664,
+      "ndcg10": 0.7967075809905066,
       "mrr": 1,
-      "recall5": 0.5,
+      "recall5": 1,
       "precision5": 1,
       "contamination": 0,
       "leaks": 0,
-      "tokensPerRelevant": 141,
-      "selected": 1,
+      "tokensPerRelevant": 118.5,
+      "selected": 2,
       "queries": 1
     },
     "irrelevant": {
@@ -75,10 +75,10 @@
       "ndcg10": 0.9384882922619097,
       "mrr": 0.9166666666666666,
       "recall5": 1,
-      "precision5": 0.6944444444444443,
-      "contamination": 0.3055555555555555,
+      "precision5": 0.7083333333333334,
+      "contamination": 0.2916666666666667,
       "leaks": 0,
-      "tokensPerRelevant": 170.83333333333334,
+      "tokensPerRelevant": 169.33333333333334,
       "selected": 1.8333333333333333,
       "queries": 6
     },
@@ -108,11 +108,11 @@
       "ndcg10": 1,
       "mrr": 1,
       "recall5": 1,
-      "precision5": 0.5,
-      "contamination": 0.5,
+      "precision5": 1,
+      "contamination": 0,
       "leaks": 0,
-      "tokensPerRelevant": 92,
-      "selected": 2,
+      "tokensPerRelevant": 44.333333333333336,
+      "selected": 3,
       "queries": 1
     }
   },
@@ -121,33 +121,33 @@
       "ndcg10": 0.9261859507142916,
       "mrr": 0.75,
       "recall5": 1,
-      "precision5": 0.7638888888888888,
-      "contamination": 0.23611111111111108,
+      "precision5": 0.8055555555555555,
+      "contamination": 0.19444444444444442,
       "leaks": 0,
-      "tokensPerRelevant": 209,
-      "selected": 1.6666666666666667,
+      "tokensPerRelevant": 195.2,
+      "selected": 1.3333333333333333,
       "queries": 6
     },
     "orient": {
       "ndcg10": 0.9589921948412731,
       "mrr": 0.9444444444444444,
       "recall5": 1,
-      "precision5": 0.787037037037037,
-      "contamination": 0.21296296296296294,
+      "precision5": 0.8277777777777778,
+      "contamination": 0.17222222222222222,
       "leaks": 0,
-      "tokensPerRelevant": 91.55555555555556,
-      "selected": 1.6666666666666667,
+      "tokensPerRelevant": 92.92592592592592,
+      "selected": 2,
       "queries": 9
     },
     "recall_fact": {
       "ndcg10": 1,
       "mrr": 0.8181818181818182,
       "recall5": 1,
-      "precision5": 0.6393939393939394,
-      "contamination": 0.36363636363636365,
+      "precision5": 0.6545454545454545,
+      "contamination": 0.3484848484848485,
       "leaks": 0,
-      "tokensPerRelevant": 198.44444444444446,
-      "selected": 1.9090909090909092,
+      "tokensPerRelevant": 194.66666666666666,
+      "selected": 1.8181818181818181,
       "queries": 11
     },
     "recall_precedent": {
@@ -173,14 +173,14 @@
       "queries": 8
     },
     "verify": {
-      "ndcg10": 0.27541155237618664,
+      "ndcg10": 0.7967075809905066,
       "mrr": 1,
-      "recall5": 0.5,
+      "recall5": 1,
       "precision5": 1,
       "contamination": 0,
       "leaks": 0,
-      "tokensPerRelevant": 141,
-      "selected": 1,
+      "tokensPerRelevant": 118.5,
+      "selected": 2,
       "queries": 1
     }
   }

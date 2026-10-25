@@ -129,6 +129,38 @@ export const RELEVANCE_MARGIN = 0.45
 export const MMR_SHORTLIST = 120
 
 /**
+ * Graph expansion (Wave 1).
+ *
+ * Records already carry typed `links`, and `ana_link` already writes them — but
+ * retrieval never walked them, so the graph only existed in the visualization.
+ * A memory whose wording does not match the query can still be the right context
+ * when a strong hit points at it ("this failure was caused by that procedure").
+ *
+ * The rules are deliberately narrow: bounded seeds, bounded revivals, one hop,
+ * and a typed weight table. `supersedes` gets weight 0 on purpose — following it
+ * would drag the stale belief back in, which is the opposite of the point.
+ */
+export const GRAPH_SEEDS = 12
+export const GRAPH_MAX_REVIVED = 6
+/** A `related` edge may rescue a gated-out record only if it had *some* match. */
+export const GRAPH_REVIVE_MIN_RELEVANCE = 0.05
+export const GRAPH_LINK_WEIGHTS = Object.freeze({
+  supports: 0.14,
+  part_of: 0.14,
+  caused_by: 0.14,
+  derived_from: 0.12,
+  superseded_by: 0.1,
+  related: 0.08,
+  supersedes: 0,
+  contradicts: 0,
+  challenged_by: 0,
+})
+const GRAPH_REVIVE_RELS = new Set(['supports', 'part_of', 'caused_by', 'derived_from', 'superseded_by'])
+
+/** Score penalty for a superseded record that `debug` mode still shows. */
+export const SUPERSEDED_PENALTY = 0.15
+
+/**
  * Per-intent multiplier on the relevance floor.
  *
  * The floor is one number on purpose — seven tunable floors would be seven ways
@@ -266,6 +298,11 @@ export function planRecall(request = {}, params = {}, callerScope = 'global', em
     minRelevance: request.minRelevance !== undefined
       ? clamp(request.minRelevance, 0, 1)
       : clamp(defaults.minRelevance * (INTENT_FLOOR_FACTOR[intent] ?? 1), 0, 1),
+    // Superseded beliefs are history: readable by id and visible to `debug`,
+    // but a normal recall must not inject a rule a newer record replaced.
+    includeSuperseded: request.includeSuperseded === true,
+    // The caller can turn graph expansion off for a pure lexical comparison.
+    graphExpansion: request.graphExpansion !== false,
     // How far below the best candidate's relevance a weaker one may sit. Not a
     // tunable: it is a property of the query set, not of one installation.
     relevanceMargin: RELEVANCE_MARGIN,
@@ -277,11 +314,14 @@ export function planRecall(request = {}, params = {}, callerScope = 'global', em
  * Inverted index over live records. Cached by the service on the identity of
  * `state.memories`, so an audit-only transaction does not rebuild it.
  * @param {import('../store/schema.js').AnagenesisState} state
- * @returns {{ postings: Map<string, Map<string, number>>, lengths: Map<string, number>, avgdl: number, total: number }}
+ * @returns {{ postings: Map<string, Map<string, number>>, lengths: Map<string, number>, avgdl: number,
+ *   total: number, docCount: number, inbound: Map<string, { from: string, rel: string }[]> }}
  */
 export function buildIndex(state) {
   const postings = new Map()
   const lengths = new Map()
+  /** @type {Map<string, { from: string, rel: string }[]>} */
+  const inbound = new Map()
   let total = 0
   for (const record of Object.values(state.memories)) {
     if (record.state === 'retired') continue
@@ -298,8 +338,17 @@ export function buildIndex(state) {
     }
     lengths.set(record.id, tokens.length)
     total += tokens.length
+    // Reverse edges: "who points at me". A link from a record that is not in
+    // the index (retired) still exists on the source record, but a retired
+    // source is never a candidate, so it is skipped here as well.
+    for (const link of record.links ?? []) {
+      if (typeof link?.to !== 'string' || link.to === '') continue
+      const bucket = inbound.get(link.to) ?? []
+      bucket.push({ from: record.id, rel: String(link.rel ?? 'related') })
+      inbound.set(link.to, bucket)
+    }
   }
-  return { postings, lengths, avgdl: lengths.size === 0 ? 1 : total / lengths.size, total, docCount: lengths.size }
+  return { postings, lengths, avgdl: lengths.size === 0 ? 1 : total / lengths.size, total, docCount: lengths.size, inbound }
 }
 
 /**
@@ -443,7 +492,12 @@ export async function recall(store, request = {}, opts = {}) {
 
   const docCount = index.lengths.size || 1
   const candidates = []
-  const rejected = { state: 0, kind: 0, confidence: 0, scope: 0, expired: 0, strategy: 0, crossProject: 0, relevance: 0, relevanceRelative: 0 }
+  /** Rows that only failed the relevance floor; graph expansion may revive them. */
+  const gated = []
+  const rejected = {
+    state: 0, kind: 0, confidence: 0, scope: 0, expired: 0, strategy: 0, crossProject: 0,
+    superseded: 0, relevance: 0, relevanceRelative: 0,
+  }
   let crossProjectAdmitted = 0
 
   for (const record of Object.values(state.memories)) {
@@ -455,12 +509,27 @@ export async function recall(store, request = {}, opts = {}) {
     if (!verdict.ok) { rejected.scope++; continue }
     if (verdict.weight < 1) { crossProjectAdmitted += 1; rejected.crossProject += 1 }
     if (record.expiresAt !== null && record.expiresAt <= now && record.state !== 'expired') { rejected.expired++; continue }
+    const supersededBy = supersededByLive(record, state.memories)
+    if (supersededBy !== null && plan.includeSuperseded !== true) { rejected.superseded++; continue }
     if (engine !== undefined && engine.admits !== undefined && !engine.admits(record, plan)) { rejected.strategy++; continue }
     const scored = scoreRecord(record, plan, index, docCount, now, engine, verdict)
+    if (supersededBy !== null) {
+      // Visible in debug mode, but never silently equal to the record that
+      // replaced it: it says which record superseded it and loses score.
+      scored.parts.superseded = -SUPERSEDED_PENALTY
+      scored.score -= SUPERSEDED_PENALTY
+      scored.reason = `${scored.reason}; superseded by ${supersededBy}`
+    }
     // The absolute relevance floor. Skipped for an empty query, which is the
     // deliberate "brief me on this project" path: there is nothing to be
     // relevant *to*, so recency/confidence are the whole ranking.
-    if (plan.tokens.length > 0 && scored.matchFull < plan.minRelevance) { rejected.relevance++; continue }
+    if (plan.tokens.length > 0 && scored.matchFull < plan.minRelevance) {
+      rejected.relevance++
+      // Kept, not dropped: a strong seed can still point at it through a typed
+      // link, and that is the whole reason the graph exists.
+      gated.push(scored)
+      continue
+    }
     candidates.push(scored)
   }
 
@@ -469,10 +538,24 @@ export async function recall(store, request = {}, opts = {}) {
   let scoredPool = candidates
   if (plan.tokens.length > 0 && candidates.length > 1) {
     const topRelevance = candidates.reduce((max, row) => Math.max(max, row.relevance), 0)
-    scoredPool = candidates.filter((row) => row.relevance >= topRelevance * plan.relevanceMargin)
-    rejected.relevanceRelative = candidates.length - scoredPool.length
+    const kept = []
+    for (const row of candidates) {
+      if (row.relevance >= topRelevance * plan.relevanceMargin) kept.push(row)
+      else {
+        // Same as the absolute floor: a record that is merely weaker than the
+        // best hit is not garbage — a strong seed may still point at it.
+        gated.push(row)
+        rejected.relevanceRelative += 1
+      }
+    }
+    scoredPool = kept
   }
 
+  // One hop along typed links from the strongest hits. This runs after the
+  // relevance gates (so it can rescue a record they rejected) and before packing
+  // (so MMR and the token budget still decide what fits).
+  const graph = expandByLinks(scoredPool, gated, index, plan)
+  if (graph.revived.length > 0) scoredPool = [...scoredPool, ...graph.revived]
   const packed = pack(scoredPool, plan, now, engine)
   // Conflict detection runs on what was *selected*, and its only effect is on
   // the projection: the cross-project record's effective confidence is halved,
@@ -515,6 +598,10 @@ export async function recall(store, request = {}, opts = {}) {
     text: text.text,
     strategy: engine?.describe?.() ?? ['(no engine)'],
     rejected,
+    // How many records the graph contributed that the lexical gates would have
+    // dropped. Zero is a valid, common answer; it is reported so "the graph did
+    // nothing" and "the graph is not wired" stay distinguishable.
+    graph: { revived: graph.revived.length, edges: graph.edges },
     conflicts,
     trace: packed.selected.map((row) => ({ id: row.record.id, parts: row.parts })),
   }
@@ -626,6 +713,92 @@ export function scoreRecord(record, plan, index, docCount, now, engine, verdict)
     scopeRelation: scopeVerdict.relation,
     effectiveConfidence: record.confidence,
   }
+}
+
+/**
+ * The id that supersedes this record, or null when nothing live does.
+ *
+ * A dangling pointer must not hide a record: if the target is missing or
+ * retired, the "new" belief is gone and the old one is all the store has left.
+ * @param {any} record
+ * @param {Record<string, any>} memories
+ * @returns {string|null}
+ */
+export function supersededByLive(record, memories) {
+  const id = /** @type {any} */ (record)?.supersededBy
+  if (typeof id !== 'string' || id === '') return null
+  const target = memories?.[id]
+  if (target === undefined || target === null || target.state === 'retired') return null
+  return id
+}
+
+/**
+ * One hop of graph expansion from the strongest hits.
+ *
+ * `pool` are the candidates that passed the relevance gates; `gated` are the
+ * ones that only failed the floor and may be rescued by a typed edge. Both are
+ * mutated in place (their `parts.graph`, `score` and `reason` are updated) and
+ * the revived rows are returned so the caller can pack them.
+ *
+ * This is intentionally not a graph traversal: one hop, at most 12 seeds, at
+ * most 6 revivals, and weights from a fixed table. An unbounded walk over
+ * `links` would turn "a related record" into "everything ever linked", which is
+ * how a memory layer starts injecting the whole store.
+ * @param {ReturnType<typeof scoreRecord>[]} pool
+ * @param {ReturnType<typeof scoreRecord>[]} gated
+ * @param {{ inbound?: Map<string, { from: string, rel: string }[]> }} index
+ * @param {any} plan
+ * @returns {{ revived: ReturnType<typeof scoreRecord>[], edges: number }}
+ */
+export function expandByLinks(pool, gated, index, plan) {
+  if (plan?.graphExpansion === false || pool.length === 0) return { revived: [], edges: 0 }
+  const byId = new Map(pool.map((row) => [row.record.id, row]))
+  const gatedById = new Map(gated.map((row) => [row.record.id, row]))
+  const seeds = [...pool].sort((a, b) => b.score - a.score).slice(0, GRAPH_SEEDS)
+  /** @type {Map<string, { row: any, weight: number, rel: string, direction: 'out'|'in', seedId: string, revive: boolean }>} */
+  const neighbours = new Map()
+
+  /**
+   * @param {any} seed
+   * @param {string} id
+   * @param {string} rel
+   * @param {'out'|'in'} direction
+   */
+  const consider = (seed, id, rel, direction) => {
+    if (typeof id !== 'string' || id === '' || id === seed.record.id) return
+    const weight = Number(GRAPH_LINK_WEIGHTS[rel] ?? 0)
+    if (!(weight > 0)) return
+    const pooled = byId.get(id)
+    const row = pooled ?? gatedById.get(id)
+    if (row === undefined) return
+    const revive = pooled === undefined
+    if (revive) {
+      if (!GRAPH_REVIVE_RELS.has(rel)) return
+      if (rel === 'related' && !(row.relevance >= GRAPH_REVIVE_MIN_RELEVANCE)) return
+    }
+    const previous = neighbours.get(id)
+    if (previous !== undefined && previous.weight >= weight) return
+    neighbours.set(id, { row, weight, rel, direction, seedId: seed.record.id, revive })
+  }
+
+  for (const seed of seeds) {
+    for (const link of seed.record.links ?? []) consider(seed, link?.to, String(link?.rel ?? 'related'), 'out')
+    for (const edge of index?.inbound?.get(seed.record.id) ?? []) consider(seed, edge.from, edge.rel, 'in')
+  }
+
+  const revived = []
+  let edges = 0
+  for (const entry of [...neighbours.values()].sort((a, b) => b.weight - a.weight)) {
+    if (entry.revive && revived.length >= GRAPH_MAX_REVIVED) continue
+    const row = entry.row
+    row.parts.graph = (row.parts.graph ?? 0) + entry.weight
+    row.score += entry.weight
+    row.reason = `${row.reason}; graph ${entry.direction === 'out' ? '→' : '←'} ${entry.rel} ${entry.seedId}`
+    row.graph = { via: entry.seedId, rel: entry.rel, direction: entry.direction }
+    edges += 1
+    if (entry.revive) revived.push(row)
+  }
+  return { revived, edges }
 }
 
 /**

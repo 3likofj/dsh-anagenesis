@@ -760,14 +760,16 @@ export function buildWriteTools(deps) {
   tools.push(defineTool({
     name: 'ana_link',
     description: '显式地把两条记忆关联起来（rel：related、supports、contradicts、supersedes、caused_by、part_of）。'
-      + '连线会影响召回排序，也是让一条重思链日后仍可被遍历的原因。',
+      + '连线会影响召回排序，也是让一条重思链日后仍可被遍历的原因。'
+      + '**supersedes 是特例**：它在一个事务里同时写两侧（新记录记 supersedes，旧记录记 supersededBy），'
+      + '之后普通召回不再注入被取代的那条（`debug` 意图例外）。旧记录必须与新记录同作用域，自环与互相取代会被拒绝。',
     parameters: {
       from: { type: 'string', required: true, description: '源记忆 id。' },
       to: { type: 'string', required: true, description: '目标记忆 id。' },
-      rel: { type: 'string', required: true, description: '关系名。' },
+      rel: { type: 'string', required: true, description: '关系名；supersedes 表示"from 取代 to"。' },
     },
-    output: output({ ok, seq }),
-    execute: async (args) => pick(await service().ops.link(args), ['seq']),
+    output: output({ ok, seq, supersedes: { type: 'string' }, supersededBy: { type: 'string' } }),
+    execute: async (args) => pick(await service().ops.link(args), ['seq', 'supersedes', 'supersededBy']),
   }))
 
   // ── 5. feedback ──────────────────────────────────────────────────────────

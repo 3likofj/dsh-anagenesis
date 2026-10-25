@@ -100,6 +100,10 @@ export class StrategyEngine {
       if (typeof value.diversity === 'number') next.diversity = value.diversity
       if (typeof value.granularity === 'string') next.granularity = value.granularity
       if (typeof value.halfLifeMs === 'number') next.halfLifeMs = value.halfLifeMs
+      // A stack may ask to see superseded history (the `debug` mode). It is a
+      // boolean capability, not a tunable: either the mode wants history or it
+      // does not.
+      if (typeof value.includeSuperseded === 'boolean') next.includeSuperseded = value.includeSuperseded
     }
     // An explicit caller override always wins over the stack.
     if (plan.tokenBudgetLocked === true) next.tokenBudget = plan.tokenBudget

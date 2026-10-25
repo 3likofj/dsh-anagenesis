@@ -68,7 +68,9 @@ const structuralQueries = [
     projectId: PROJECT_P1,
     sessionId: null,
     crossProject: false,
-    gold: { 'mem_supersede-new': 2, 'mem_supersede-old': 0 },
+    // release-flow and pack-gate are genuinely useful context here; the old
+    // rule (supersede-old) is the trap that must not come back.
+    gold: { 'mem_supersede-new': 2, 'mem_release-flow': 1, 'mem_pack-gate': 1, 'mem_supersede-old': 0 },
     forbidden: [],
     maxTokens: DEFAULT_TOKENS,
   },

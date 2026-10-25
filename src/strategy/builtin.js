@@ -129,6 +129,9 @@ export const BUILTIN_IMPLS = Object.freeze({
       plan: () => ({
         states: ['draft', 'active', 'verified', 'locked', 'deprecated', 'expired'],
         minConfidence: 0,
+        // Debug is the one mode where a superseded rule is evidence rather than
+        // noise: "what did we believe before, and why did it change".
+        includeSuperseded: true,
       }),
       score: ({ record, params }) => {
         if (record.kind === 'failure') return { delta: Number(params.failureBoost), reason: 'known failure' }

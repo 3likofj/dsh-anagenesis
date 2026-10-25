@@ -56,6 +56,19 @@ export function createMemoryOps(deps) {
     return resolved
   }
 
+  /**
+   * Add one link, replacing an identical (rel, to) pair so retrying a link does
+   * not grow the array, capped at the schema's 64.
+   * @param {any} record
+   * @param {string} rel
+   * @param {string} to
+   * @returns {any}
+   */
+  function withLink(record, rel, to) {
+    const links = (record.links ?? []).filter((link) => !(link.rel === rel && link.to === to))
+    return { ...record, links: [...links, { rel, to }].slice(-64) }
+  }
+
   return {
     /** @type {(spec: any, opts?: { scope?: string, by?: string }) => Promise<any>} */
     async remember(spec, opts = {}) {
@@ -373,16 +386,60 @@ export function createMemoryOps(deps) {
     },
 
     /**
+     * Link two memories.
+     *
+     * `supersedes` (and its mirror `superseded_by`) are the one relation that
+     * has to be written on **both** sides in the same transaction: the newer
+     * record gets `supersedes`/`supersedes[]`, the older one gets
+     * `supersededBy`/`superseded_by`, and recall uses that pointer to stop
+     * injecting a rule that has been replaced. Writing only one side was the
+     * old behaviour, and it left the dead schema fields (`supersedes`,
+     * `supersededBy`) permanently empty while superseded rules kept being
+     * injected next to their replacements.
+     *
+     * Cross-namespace supersession is refused: rewriting a record in another
+     * project is exactly the cross-project mutation the isolation layer exists
+     * to prevent. Self-links and two-record cycles are refused as well.
      * @type {(args: { from: string, to: string, rel: string }) => Promise<any>}
      */
     async link({ from, to, rel }) {
+      if (from === to) throw new Error('anagenesis: a memory cannot link to itself')
       const source = mustGet(from)
-      mustGet(to)
-      const record = {
-        ...source,
-        links: [...source.links, { rel, to }].slice(-64),
-        updatedAt: now(),
+      const target = mustGet(to)
+      const ts = now()
+      if (rel === 'supersedes' || rel === 'superseded_by') {
+        const [newer, older] = rel === 'supersedes' ? [source, target] : [target, source]
+        if (namespaceOf(newer.scope) !== namespaceOf(older.scope)) {
+          throw new Error(`anagenesis: supersede needs both memories in the same namespace (${namespaceOf(newer.scope)} vs ${namespaceOf(older.scope)}); retag one first`)
+        }
+        // Walk the replacement chain upwards from the record that is about to
+        // become "new". If it is *already* replaced by the record we are about
+        // to call "old", the relation is inverted and the two would supersede
+        // each other; recall could never say which one is current.
+        //
+        // Re-linking the same pair is not an error: the walk starts at the
+        // newer record, so an idempotent retry never reaches the older one.
+        const seen = new Set([newer.id])
+        let cursor = newer.supersededBy
+        while (typeof cursor === 'string' && cursor !== '' && !seen.has(cursor)) {
+          if (cursor === older.id) throw new Error(`anagenesis: "${newer.id}" and "${older.id}" would supersede each other`)
+          seen.add(cursor)
+          cursor = /** @type {any} */ (store.state.memories[cursor])?.supersededBy ?? null
+        }
+        const nextNewer = withLink({
+          ...newer,
+          supersedes: [...new Set([...(newer.supersedes ?? []), older.id])].slice(0, 32),
+          updatedAt: ts,
+        }, 'supersedes', older.id)
+        const nextOlder = withLink({ ...older, supersededBy: newer.id, updatedAt: ts }, 'superseded_by', newer.id)
+        const result = await store.transact({ memorySet: { [nextNewer.id]: nextNewer, [nextOlder.id]: nextOlder } }, {
+          type: 'memory.link',
+          scope: 'global',
+          payload: { from, to, rel, supersedes: older.id, supersededBy: newer.id },
+        })
+        return { ok: true, seq: result.seq, revert: result.revert, supersedes: older.id, supersededBy: newer.id }
       }
+      const record = withLink({ ...source, updatedAt: ts }, String(rel), to)
       const result = await store.transact({ memorySet: { [from]: record } }, {
         type: 'memory.link',
         scope: 'global',
