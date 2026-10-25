@@ -32,7 +32,7 @@ import { recall as runRecall } from './memory/recall.js'
 import { resolveEmbedder } from './memory/embed.js'
 import { StrategyRegistry, DEFAULT_STACK } from './strategy/registry.js'
 import { StrategyEngine } from './strategy/engine.js'
-import { Tuner } from './meta/tuner.js'
+import { Tuner, lifecycleSuggestions } from './meta/tuner.js'
 import { runReflection } from './meta/reflect.js'
 import { createInvariantGate, InvariantViolation } from './guard/invariants.js'
 import {
@@ -704,6 +704,14 @@ export async function apply(ctx, config = {}) {
         stats: state.stats,
         engine: { active: engine.describe(), health: engine.health() },
         tuning: tuner.report(),
+        // The lifecycle knobs' consumers: which records the feedback says are
+        // ready to promote or demote. Suggestions only — acting on them is an
+        // ordinary, audited `ana_promote` / `ana_demote` call.
+        lifecycle: lifecycleSuggestions(state, {
+          promoteAt: tuner.value('promote.hitRateThreshold'),
+          demoteAt: tuner.value('demote.missRateThreshold'),
+          minSamples: 2,
+        }),
         reflection: { ...reflection },
         // 版本与新版本提示：`ana_audit view=status` 是 Agent 能读到它的地方。
         update: update.status(),

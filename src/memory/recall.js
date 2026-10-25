@@ -201,7 +201,6 @@ export function defaultsFor(intent, scopeParams = {}) {
     minConfidence: pick(scopeParams, `recall.${intent}.minConfidence`, base.minConfidence),
     tokenBudget: pick(scopeParams, `recall.${intent}.tokenBudget`, base.tokenBudget),
     halfLifeMs: pick(scopeParams, 'recall.halfLifeMs', 14 * 24 * 3600 * 1000),
-    explorationRate: pick(scopeParams, 'recall.explorationRate', 0.25),
     diversity: pick(scopeParams, 'recall.diversity', base.diversity ?? 0.25),
     crossProjectFactor: pick(scopeParams, 'recall.crossProjectFactor', 0.4),
     // Query relevance floor. There was no floor before, so recall filled the
@@ -290,7 +289,6 @@ export function planRecall(request = {}, params = {}, callerScope = 'global', em
     callerScope,
     weights: defaults.weights,
     halfLifeMs: defaults.halfLifeMs,
-    explorationRate: defaults.explorationRate,
     diversity: defaults.diversity,
     crossProjectFactor: defaults.crossProjectFactor,
     // An explicit caller floor wins; otherwise the intent's factor scales the

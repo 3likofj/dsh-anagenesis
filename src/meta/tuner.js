@@ -23,7 +23,6 @@ import { defaultTuning } from '../store/schema.js'
  */
 export const PARAM_ENVELOPE = Object.freeze({
   'recall.halfLifeMs': { min: 600_000, max: 90 * 24 * 3600 * 1000, step: 600_000, default: 14 * 24 * 3600 * 1000 },
-  'recall.explorationRate': { min: 0, max: 0.6, step: 0.05, default: 0.25 },
   'recall.diversity': { min: 0, max: 0.9, step: 0.05, default: 0.25 },
   // Query-relevance floor. Tunable because how strict "relevant enough" should
   // be is a property of the store's own vocabulary, and the benchmark only
@@ -333,5 +332,55 @@ export class Tuner {
     if (samples.length === 0) return 0
     const window = samples.slice(-20)
     return window.reduce((sum, value) => sum + value, 0) / window.length
+  }
+}
+
+/**
+ * Lifecycle suggestions from observed usage — the consumers for
+ * `promote.hitRateThreshold` / `demote.missRateThreshold`.
+ *
+ * Before this existed, both knobs were declared in the envelope and read by
+ * nobody, so the tuner could spend its exploration budget moving a number that
+ * changed nothing. The rates come from `ana_feedback` (the only writer of
+ * `access.hits` / `access.misses`), which keeps the suggestion auditable: every
+ * number here traces back to a feedback row.
+ *
+ * Pure and read-only: it suggests, it never writes. Acting on it is `ana_promote`
+ * / `ana_demote`, with a reason and a revertible transaction.
+ * @param {any} state
+ * @param {{ promoteAt?: number, demoteAt?: number, minSamples?: number }} [opts]
+ * @returns {{ promoteAt: number, demoteAt: number, promotable: any[], demotable: any[] }}
+ */
+export function lifecycleSuggestions(state, opts = {}) {
+  const promoteAt = Number(opts.promoteAt ?? 0.3)
+  const demoteAt = Number(opts.demoteAt ?? 0.6)
+  const minSamples = Math.max(1, Number(opts.minSamples ?? 2))
+  /** @type {any[]} */
+  const promotable = []
+  /** @type {any[]} */
+  const demotable = []
+  for (const record of Object.values(state?.memories ?? {})) {
+    const row = /** @type {any} */ (record)
+    if (row.state === 'retired' || row.state === 'expired') continue
+    const hits = Number(row.access?.hits ?? 0)
+    const misses = Number(row.access?.misses ?? 0)
+    const total = hits + misses
+    if (total < minSamples) continue
+    const hitRate = hits / total
+    const missRate = misses / total
+    const entry = { id: row.id, state: row.state, hits, misses, hitRate: Number(hitRate.toFixed(3)) }
+    if ((row.state === 'draft' || row.state === 'active') && hits >= minSamples && hitRate >= promoteAt) {
+      promotable.push(entry)
+    }
+    if ((row.state === 'active' || row.state === 'verified') && misses >= minSamples && missRate >= demoteAt) {
+      demotable.push({ ...entry, missRate: Number(missRate.toFixed(3)) })
+    }
+  }
+  const byRate = (key) => (a, b) => b[key] - a[key]
+  return {
+    promoteAt,
+    demoteAt,
+    promotable: promotable.sort(byRate('hitRate')).slice(0, 5),
+    demotable: demotable.sort(byRate('missRate')).slice(0, 5),
   }
 }

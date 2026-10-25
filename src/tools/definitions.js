@@ -67,6 +67,22 @@ const scopeJson = {
 }
 
 /**
+ * Whether the state a strategy chose survives the admission floor.
+ *
+ * Only an **explicit** confidence can trigger the downgrade: omitting it must
+ * keep the strategy's decision, otherwise every default write would silently
+ * become a draft the first time someone tuned `write.admissionThreshold`.
+ * @param {string} wanted
+ * @param {number|undefined} declared
+ * @param {number} threshold
+ * @returns {{ state: string, downgraded: boolean }}
+ */
+export function admitState(wanted, declared, threshold) {
+  const admitted = wanted === 'draft' || declared === undefined || Number(declared) >= Number(threshold)
+  return { state: admitted ? wanted : 'draft', downgraded: !admitted }
+}
+
+/**
  * @param {any} value
  * @param {string[]} keys
  * @returns {Record<string, any>}
@@ -592,7 +608,9 @@ export function buildWriteTools(deps) {
     name: 'ana_remember',
     description: '把一件事写进你自己的记忆。**默认写入当前项目作用域**（不是全局）——'
       + '这样它就不会在别的项目里被召回。要写跨项目通用的事实，显式传 scope: {tier:"global"}。'
-      + '初始生命周期状态由策略栈决定（explore 写为 draft，exploit 直接收为 active），内容重复时按作用域去重。',
+      + '初始生命周期状态由策略栈决定（explore 写为 draft，exploit 直接收为 active），内容重复时按作用域去重。'
+      + '返回值里的 similar/suggestedAction 是**近重复提示**（不会自动改写）：若要收编它们，'
+      + '用 supersedes: [id...] 重写一次，新记录与两侧指针会在同一事务里落地。',
     parameters: {
       kind: { type: 'string', enum: KINDS, description: `这是哪一类东西：${KINDS.join(', ')}。` },
       subject: { type: 'string', required: true, description: '一句话的断言或标题。' },
@@ -604,6 +622,7 @@ export function buildWriteTools(deps) {
       ttlMs: { type: 'integer', description: '存活毫秒数；到期后这条记忆自动过期。' },
       state: { type: 'string', enum: ['draft', 'active', 'verified'], description: '强制指定初始状态，压过策略的决定。' },
       evidence: { type: 'array', items: { type: 'string' }, description: '你凭什么相信它：观察到的输出、文件路径、测试结果。' },
+      supersedes: { type: 'array', items: { type: 'string' }, description: '被这条新记录取代的旧记忆 id（同作用域）。会同时写两侧指针；普通召回不再注入旧记录。' },
       scope: scopeJson,
     },
     output: output({
@@ -613,6 +632,10 @@ export function buildWriteTools(deps) {
       scope: { type: 'string', description: '这条记忆实际落在哪个作用域。' },
       decidedBy: { type: 'array', items: { type: 'string' }, description: '参与决定这次写入的策略。' },
       deduplicated: { type: 'boolean', description: '内容已存在并命中去重时为 true。' },
+      downgraded: { type: 'boolean', description: '置信度低于 write.admissionThreshold，实际落为 draft。' },
+      supersedes: { type: 'array', items: { type: 'string' }, description: '这次写入实际取代的旧记忆 id。' },
+      similar: { type: 'array', items: { type: 'string' }, description: '近重复提示（最多 3 条，形如 "mem_x sim=0.82 kind=procedure state=verified: gist"）。不会自动改写。' },
+      suggestedAction: { type: 'string', description: 'supersede / merge / link —— 对近重复提示的建议动作；没有近重复时不返回。' },
       seq,
     }),
     execute: async (args, exec) => {
@@ -621,10 +644,19 @@ export function buildWriteTools(deps) {
       const decision = svc.engine.decideWrite(draft, { intent: 'write' })
       if (decision.reject !== undefined) throw new Error(`anagenesis: write refused by strategy: ${decision.reject}`)
       const scope = svc.writeScope(exec, args.scope)
+      // `write.admissionThreshold`: an *explicit* confidence below the floor does
+      // not buy an established state. The agent can still promote it later (with
+      // evidence), which is the audited path. Omitting confidence leaves the
+      // strategy's decision untouched, so a default write keeps its old meaning.
+      const threshold = svc.tuner.value('write.admissionThreshold')
+      const wanted = args.state ?? decision.state
+      const declared = args.confidence === undefined ? undefined : Number(args.confidence)
+      const admission = admitState(wanted, declared, threshold)
+      const state = admission.state
       const result = await svc.ops.remember({
         ...draft,
         kind: args.kind ?? 'fact',
-        state: args.state ?? decision.state,
+        state,
         confidence: args.confidence ?? decision.confidence,
         ttlMs: args.ttlMs ?? decision.ttlMs ?? null,
         scope,
@@ -633,7 +665,8 @@ export function buildWriteTools(deps) {
       const value = {
         ok: true,
         id: result.id,
-        state: draft.state ?? decision.state,
+        state,
+        downgraded: admission.downgraded,
         // Labelled from what was actually **stored** (`createMemory` normalizes
         // the request: a tier with no id to bind to degrades narrower, never
         // wider). Labelling the request object instead would report a scope the
@@ -647,6 +680,11 @@ export function buildWriteTools(deps) {
       // whatever transaction ran last — a caller reverting "its own write" would
       // have compensated an unrelated one. Absent is honest; wrong is not.
       if (result.seq !== undefined) value.seq = result.seq
+      if (result.supersedes !== undefined && result.supersedes.length > 0) value.supersedes = result.supersedes
+      if (Array.isArray(result.similar) && result.similar.length > 0) {
+        value.similar = result.similar.map((row) => `${row.id} sim=${row.similarity.toFixed(2)} ${row.kind}/${row.state}: ${row.gist}`)
+        if (result.suggestedAction !== null && result.suggestedAction !== undefined) value.suggestedAction = result.suggestedAction
+      }
       return value
     },
   }))

@@ -14,10 +14,64 @@
 import { clamp, estimateTokens, hash32, nowMs, stableStringify, ulid } from '../util.js'
 import { CONFIDENCE_FLOOR, createMemory, canTransition, effectiveSalience } from '../store/schema.js'
 import { namespaceOf, normalizeTier, scopeLabel } from '../scope/project.js'
-import { embed as defaultEmbed } from './embed.js'
+import { cosine, embed as defaultEmbed } from './embed.js'
 
 /** Maximum records a single destructive call may touch (guardrail input). */
 export const FORGET_BUDGET = 50
+
+/**
+ * Similarity floors for the "you may be about to duplicate this" report.
+ * Deliberately advisory: the offline vectorizer decides *what to show*, never
+ * what to do.
+ */
+const SIMILARITY_FLOOR = 0.35
+const SIMILARITY_MERGE = 0.65
+const SIMILARITY_SUPERSEDE = 0.85
+
+/**
+ * The live records in this namespace that look closest to `record`.
+ * @param {any} record
+ * @param {any} state
+ * @param {string} ns
+ * @param {string[]} [exclude] ids being superseded by this write
+ * @returns {{ id: string, similarity: number, kind: string, state: string, gist: string }[]}
+ */
+function findSimilar(record, state, ns, exclude = []) {
+  const skip = new Set(exclude)
+  /** @type {{ id: string, similarity: number, kind: string, state: string, gist: string }[]} */
+  const hits = []
+  for (const other of Object.values(state.memories)) {
+    const candidate = /** @type {any} */ (other)
+    if (candidate.id === record.id || skip.has(candidate.id)) continue
+    if (candidate.state === 'retired') continue
+    if (namespaceOf(candidate.scope) !== ns) continue
+    const similarity = Math.max(0, cosine(record.embedding, candidate.embedding))
+    if (similarity < SIMILARITY_FLOOR) continue
+    hits.push({
+      id: candidate.id,
+      similarity: Number(similarity.toFixed(3)),
+      kind: candidate.kind,
+      state: candidate.state,
+      gist: String(candidate.gist ?? '').slice(0, 120),
+    })
+  }
+  return hits.sort((a, b) => b.similarity - a.similarity).slice(0, 3)
+}
+
+/**
+ * What the similarity report suggests, if anything. `supersede` at ≥0.85,
+ * `merge` at ≥0.65, `link` below that; null when nothing was close.
+ * @param {{ similarity: number }[]} similar
+ * @returns {'supersede'|'merge'|'link'|null}
+ */
+export function suggestAction(similar) {
+  if (!Array.isArray(similar) || similar.length === 0) return null
+  const top = similar[0].similarity
+  if (top >= SIMILARITY_SUPERSEDE) return 'supersede'
+  if (top >= SIMILARITY_MERGE) return 'merge'
+  return 'link'
+}
+
 
 /**
  * @param {{ store: import('../store/store.js').MemoryStore, embed?: (t: string) => number[], clock?: () => number, logger?: any,
@@ -73,8 +127,19 @@ export function createMemoryOps(deps) {
     /** @type {(spec: any, opts?: { scope?: string, by?: string }) => Promise<any>} */
     async remember(spec, opts = {}) {
       const fallback = fallbackScope()
-      const record = createMemory(spec, {
-        now: now(),
+      const ts = now()
+      const supersedes = Array.isArray(spec.supersedes)
+        ? [...new Set(spec.supersedes.map(String).filter((id) => id !== ''))].slice(0, 32)
+        : []
+      const record = createMemory({
+        ...spec,
+        supersedes,
+        links: [
+          ...(spec.links ?? []),
+          ...supersedes.map((id) => ({ rel: 'supersedes', to: id })),
+        ],
+      }, {
+        now: ts,
         embed,
         sessionId: spec.scope?.session ?? fallback.sessionId ?? null,
         presetId: spec.scope?.preset ?? fallback.presetId ?? null,
@@ -96,14 +161,38 @@ export function createMemoryOps(deps) {
           // last, so a caller reverting "its own write" undid someone else's.
           // The existing record comes back so the caller can label the scope it
           // actually landed in.
-          return { ok: true, id: existing.id, deduplicated: true, namespace: ns, record: existing }
+          return { ok: true, id: existing.id, deduplicated: true, namespace: ns, record: existing, similar: [] }
         }
       }
+      // Consolidation in one transaction: the new record and the pointers that
+      // retire its sources are written together, so a reader can never observe
+      // "the replacement exists but the old rule is still current".
+      const memorySet = { [record.id]: record }
+      const superseded = []
+      for (const id of supersedes) {
+        const source = store.state.memories[id]
+        if (source === undefined) throw new Error(`anagenesis: cannot supersede unknown memory "${id}"`)
+        if (source.state === 'retired') throw new Error(`anagenesis: "${id}" is retired and cannot be superseded`)
+        if (namespaceOf(source.scope) !== ns) {
+          throw new Error(`anagenesis: supersede needs the same namespace ("${id}" is ${namespaceOf(source.scope)}, this write is ${ns})`)
+        }
+        memorySet[id] = withLink({
+          ...source,
+          supersededBy: record.id,
+          updatedAt: ts,
+        }, 'superseded_by', record.id)
+        superseded.push(id)
+      }
+      // Near-duplicate *suggestions*, never an automatic merge: the offline
+      // vectorizer cannot decide whether "pnpm build" and "pnpm run build" are
+      // the same rule, so the decision stays with the caller. The scan is O(N)
+      // and runs only on writes, which are rare compared with recalls.
+      const similar = findSimilar(record, store.state, ns, supersedes)
       const projectPatch = deps.projectRegistry === undefined
         ? null
-        : deps.projectRegistry(store.state, record.scope, now())
+        : deps.projectRegistry(store.state, record.scope, ts)
       const result = await store.transact({
-        memorySet: { [record.id]: record },
+        memorySet,
         ...(projectPatch ?? {}),
         // `stats.writes` counts successful memory commits, folded into the commit
         // itself so the counter cannot drift from the journal.
@@ -112,9 +201,19 @@ export function createMemoryOps(deps) {
         type: 'memory.remember',
         scope: opts.scope ?? record.scope.session ?? 'global',
         by: opts.by ?? 'agent',
-        payload: { id: record.id, kind: record.kind, state: record.state, gist: record.gist, namespace: ns },
+        payload: { id: record.id, kind: record.kind, state: record.state, gist: record.gist, namespace: ns, supersedes: superseded },
       })
-      return { ok: true, id: record.id, seq: result.seq, record: store.state.memories[record.id], namespace: ns, revert: result.revert }
+      return {
+        ok: true,
+        id: record.id,
+        seq: result.seq,
+        record: store.state.memories[record.id],
+        namespace: ns,
+        revert: result.revert,
+        supersedes: superseded,
+        similar,
+        suggestedAction: suggestAction(similar),
+      }
     },
 
     /**
