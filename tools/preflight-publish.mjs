@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync, openSync, readSync, closeSync, fstatSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { compareVersions, parseVersion } from '../src/update/check.js'
+import { compareVersions } from '../src/update/check.js'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -141,9 +141,11 @@ check('files 含 cordis.patch.yml 与双语 README',
 check('files 不含 .rename-backup', !shipped.some((item) => item.includes('rename-backup')), shipped.join(', '))
 check('files 不含预览截图/测试', !shipped.some((item) => item.includes('.preview') || item.includes('test')), '截图体积大且与包功能无关')
 
-// ── peer 版本必须覆盖宿主（预发布版本的比较器只在三段相同时才接受） ────────
+// ── 宿主版本只能声明下限（声明上界或 ^/~ 就会在小版本升级后误报） ──────────
 /**
- * 读安装态宿主自己的版本。asar 不是目录，所以按格式读 16 字节头 + JSON 索引。
+ * 读安装态宿主自己的版本。asar 不是目录，所以按格式读头 + JSON 索引：
+ * 8 字节之后是 header pickle，文件数据从 `8 + pickle 大小` 开始（不是 `16 + JSON 长度`
+ * —— 那只在 pickle 无填充时才对，之前正是算错偏移让下面整条检查静默跳过）。
  * 找不到宿主时这条不判红：这台机器没有桌面端不代表包有问题。
  */
 function hostVersion() {
@@ -156,6 +158,7 @@ function hostVersion() {
       fd = openSync(asar, 'r')
       const head = Buffer.alloc(16)
       readSync(fd, head, 0, 16, 0)
+      const dataBase = 8 + head.readUInt32LE(4)
       const headerSize = head.readUInt32LE(12)
       const json = Buffer.alloc(headerSize)
       readSync(fd, json, 0, headerSize, 16)
@@ -163,7 +166,7 @@ function hostVersion() {
       const entry = header.files?.dsh?.files?.['package.json']
       if (entry === undefined) continue
       const body = Buffer.alloc(entry.size)
-      readSync(fd, body, 0, entry.size, 16 + headerSize + Number(entry.offset))
+      readSync(fd, body, 0, entry.size, dataBase + Number(entry.offset))
       return JSON.parse(body.toString('utf8')).version
     } catch {
       /* try the next candidate */
@@ -174,29 +177,38 @@ function hostVersion() {
   return ''
 }
 const host = hostVersion()
-const peer = String(pkg.peerDependencies?.['@deepseek-ai/dsh-tools'] ?? '')
 /**
- * 宿主版本是否落在 peer 范围里。
+ * 宿主版本声明只允许一种形态：**单一最低版本**（`engines.dsh: ">=x.y.z"`，可 `||` 并列多个下限）。
  *
- * 判据不是"字符串相等"：`^0.2.1-rc.2` **接受** `0.2.1-rc.3`（同 [major,minor,patch]
- * 的预发布版本之间按优先级比大小），所以抬版会无谓地把 rc.2 上的用户挡在外面。
- * 这里只要求：同一段版本号，且宿主不低于范围下界。
+ * 插件管理器读的是 `engines.dsh`（没有它才看 dsh 的 peerDependencies），比对时用 semver 的
+ * `includePrerelease`；而 `^0.2.1-rc.2` 这类写法带上界 `<0.3.0` —— 宿主跨到 0.3 就必然误报，
+ * 按默认 semver 语义判 peer 的 npm/pnpm 在 0.2.2-rc.2 这一档就已经报。声明下限则没有上界，
+ * 宿主升小版本不再触发"版本不匹配"。出现上界或 `^`/`~` 的写法在这里直接判红，
+ * 免得这个契约悄悄退化。
  * @param {string} range
- * @param {string} version
- * @returns {boolean}
+ * @returns {{ single: boolean, minimums: string[] }}
  */
-function peerCovers(range, version) {
-  if (!range.startsWith('^')) return false
-  const base = parseVersion(range.slice(1))
-  const target = parseVersion(version)
-  if (base === null || target === null) return false
-  if (base.major !== target.major || base.minor !== target.minor || base.patch !== target.patch) return false
-  return compareVersions(version, range.slice(1)) >= 0
+function minimumOnly(range) {
+  const branches = String(range ?? '').split('||').map((part) => part.trim()).filter((part) => part !== '')
+  const minimums = []
+  for (const branch of branches) {
+    const match = /^>=\s*(\S+)$/.exec(branch)
+    if (match === null) return { single: false, minimums: [] }
+    minimums.push(match[1])
+  }
+  return { single: minimums.length > 0, minimums }
 }
+const hostRange = String(pkg.engines?.dsh ?? '')
+const declared = minimumOnly(hostRange)
+const covers = declared.minimums.some((minimum) => {
+  const order = compareVersions(host, minimum)
+  return order !== null && order >= 0
+})
 if (host === '') {
-  check('peerDependencies 覆盖宿主版本', peer !== '', `${peer || '缺失'}（本机没找到宿主，版本比对跳过）`)
+  check('engines.dsh 只声明最低宿主版本', declared.single, `${hostRange || '缺失'}（本机没找到宿主，版本比对跳过）`)
 } else {
-  check('peerDependencies 覆盖宿主版本', peerCovers(peer, host), `peer=${peer || '缺失'} · host=${host}`)
+  check('engines.dsh 只声明最低宿主版本并覆盖当前宿主', declared.single && covers,
+    `engines.dsh=${hostRange || '缺失'} · host=${host}`)
 }
 
 const failed = checks.filter((item) => item.ok !== true)

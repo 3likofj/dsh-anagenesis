@@ -1,6 +1,6 @@
 {
   "name": "dsh-anagenesis",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "给 Agent 一套它自己管得住、你也看得见的记忆：20 个语义工具、7 种意图召回、可切换策略栈、项目隔离、预设即权限、事件溯源与可回滚、离线检索基准；零运行时依赖、离线、单文件 JSONL，并自带设施仪表盘与终端可视化。",
   "keywords": [
     "dsh",
@@ -83,8 +83,11 @@
     "jurisdiction": [],
     "retention": "local-only journal under $DSH_HOME/anagenesis; memory deletion is explicit via ana_forget/ana_expire and is itself journaled. Compaction appends archive segments and by default keeps every seq revertible; the optional retainEvents policy (default 0 = off) may prune whole archive segments, and any such loss is recorded in journal/pruned.json and reported by ana_audit view=status"
   },
+  "engines": {
+    "dsh": ">=0.2.0-rc.2"
+  },
   "peerDependencies": {
-    "@deepseek-ai/dsh-tools": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-tools": ">=0.2.0-rc.2",
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependenciesMeta": {

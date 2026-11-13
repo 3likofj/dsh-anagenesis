@@ -3,6 +3,30 @@
 本文件记录每次发布的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.1] — 2026-11-13
+
+> 宿主版本只声明**下限**（`>=0.2.0-rc.2`）：插件不再因为 dsh 升一个小版本就被判"版本不匹配"，
+> 同时把启动契约在 0.2.2-rc.2 上复跑一遍。非破坏性变更，存储格式、工具、行 id、路由都没动。
+
+### 变更
+
+- `package.json` 新增 `engines.dsh: ">=0.2.0-rc.2"`（插件管理器优先读这条，没有才看 dsh 的
+  peerDependencies），`@deepseek-ai/dsh-tools` 的 peer 同步为 `>=0.2.0-rc.2`。旧声明
+  `^0.2.1-rc.2` 带着上界 `<0.3.0`，且默认 semver 语义只接受 0.2.1 段的预发布 ——
+  宿主跨到 0.3 必然误报，按默认语义判 peer 的地方（npm/pnpm）在 0.2.2-rc.2 这一档就已经报。
+  下限声明没有上界，宿主升小版本不再误报。插件管理器用 `includePrerelease` 比对，
+  0.2.2-rc.2 落在 `>=0.2.0-rc.2` 里，已用宿主的 `evaluatePluginCompatibility` 实测。
+- **适配宿主 0.2.2-rc.2**：用该版本 asar 里的真 Cordis / 真 `defineTool` / 真预设注册表
+  复跑 98 项启动契约，插件代码无需改动。
+
+### 修复
+
+- `preflight` 的宿主版本检查一直在**假绿**：`hostVersion()` 把 asar 数据区偏移算成
+  `16 + JSON 长度`（真实起点是 `8 + header pickle 长度`），解析失败又被 `try/catch` 吞掉，
+  于是"peerDependencies 覆盖宿主版本"永远走"本机没找到宿主"的跳过分支。修好偏移后，
+  这条检查改为按 `engines.dsh` 的单一最低版本判覆盖（与宿主 `evaluatePluginCompatibility`
+  同语义），并拒绝 `^` / `~` / 上界之类的声明。
+
 ## [0.4.0] — 2026-10-25
 
 > **先量，再改。** 这一版不加工具、不加依赖，改的是检索与写入的质量：
